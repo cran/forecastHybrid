@@ -4,21 +4,23 @@
 \alias{accuracy.hybridModel}
 \title{Accuracy measures for hybridModel objects}
 \usage{
-\method{accuracy}{hybridModel}(f, individual = FALSE)
+\method{accuracy}{hybridModel}(f, individual = FALSE, ...)
 }
 \arguments{
-\item{f}{The input hybridModel}
+\item{f}{the input hybridModel.}
 
-\item{individual}{If \code{TRUE}, return the accuracy of the component models instead
+\item{individual}{if \code{TRUE}, return the accuracy of the component models instead
 of the accuracy for the whole ensemble model.}
+
+\item{...}{other arguments (ignored).}
 }
 \value{
-The accuracy of the ensemble or individual component models
+The accuracy of the ensemble or individual component models.
 }
 \description{
 Return the in-sample accuracy measures for the component models of the hybridModel
 }
 \seealso{
-\code{\link{accuracy}}
+\code{\link[forecast]{accuracy}}
 }
 

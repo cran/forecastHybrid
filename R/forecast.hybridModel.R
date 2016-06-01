@@ -1,35 +1,47 @@
 #' Hybrid forecast
-#' 
+#'
 #' Forecast method for hybrid models.
-#' 
+#'
 #' @export
 #' @import forecast
-#' @import fpp
-#' @param object A hybrid time series model fit with hybridModel()
-#' @param h Number of periods for forecasting. If \code{xreg} is used, \code{h} is ignored and the number of forecast 
+#' @param object a hybrid time series model fit with \link{hybridModel}.
+#' @param h number of periods for forecasting. If \code{xreg} is used, \code{h} is ignored and the number of forecast
 #' periods is set to the number of rows of \code{xreg}.
-#' @param xreg Future values of regression variables (for use if one of the ensemble methods used
-#' in creating the hybrid forecast was \code{auto.arima} or \code{stlm} and a xreg was used in the fit)
-#' @param level Confidence level for prediction intervals
-#' @param fan If \code{TRUE}, level is set to \code{seq(51, 99, by = 3)}. This is suitable for fan plots.
+#' @param xreg future values of regression variables (for use if one of the ensemble methods used
+#' in creating the hybrid forecast was \code{auto.arima} or \code{stlm} and a \code{xreg} was used in the fit)
+#' @param level confidence level for prediction intervals. This can be expressed as a decimal between 0.0 and 1.0 or numeric
+#' between 0 and 100.
+#' @param fan if \code{TRUE}, level is set to \code{seq(51, 99, by = 3)}. This is suitable for fan plots.
 #' @param ... other arguments; currently not used.
 #' @seealso \code{\link{hybridModel}}
-#' @details If \code{xreg} was used in construcing the \code{hybridModel}, it must also be passed into \code{forecast.hybridModel}
-#' @return An object of class forecast.
+#' @details if \code{xreg} was used in construcing the \code{hybridModel},
+#' it must also be passed into \code{forecast.hybridModel}
+#' @return An object of class \link[forecast]{forecast}.
 #' @examples
 #' \dontrun{
 #' mod <- hybridModel(AirPassengers)
-#' plot(forecast(mod))
+#' fc <- forecast(mod)
+#' # View the point forecasts
+#' fc$mean
+#' # View the upper prediction interval
+#' fc$upper
+#' # View the lower prediction interval
+#' fc$lower
+#' # Plot the forecast
+#' plot(fc)
 #' }
 #'
-forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * object$frequency, 10), xreg = NULL,
-                                 level = c(80, 95), fan = FALSE, ...){
-  
+forecast.hybridModel <- function(object,
+                                 h = ifelse(object$frequency > 1, 2 * object$frequency, 10),
+                                 xreg = NULL,
+                                 level = c(80, 95),
+                                 fan = FALSE, ...){
+
   # Check inputs
   if(!is.hybridModel(object)){
     stop("The object must be constructed from hybridModel().")
   }
-  
+
   # xreg should be a matrix and have same number of observations as the horizon
   if(!is.null(xreg)){
     if(!is.matrix(xreg) && !is.data.frame(xreg)){
@@ -40,11 +52,11 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
       stop("The supplied xreg must be numeric.")
     }
     if(nrow(xreg) != h){
-      warning("The number or rows in xreg should match h. Setting h to nrow(xreg).")
+      warning("The number of rows in xreg should match h. Setting h to nrow(xreg).")
       h <- nrow(xreg)
     }
   }
-  
+
   # Check the forecast horizon
   if(!is.numeric(h)){
     stop("The forecast horizon h must be a positive integer.")
@@ -52,7 +64,7 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
   if(as.logical((h %% 1L)) || h <= 0L){
     stop("The forecast horizon h must be a positive integer.")
   }
-  
+
   # Allow for fan prediction intervals
   if(fan){
     level <- seq(51, 99, by = 3)
@@ -64,7 +76,7 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
     }
   }
 
-  
+
   # This code is pretty ugly, There is probably a better way of doing this.
   forecastWeights <- object$weights
   weightsMatrix <- matrix(rep(forecastWeights, times = h), nrow = h, byrow = TRUE)
@@ -85,14 +97,14 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
     forecasts$pointForecasts[, "nnetar"] <- forecasts$nnetar$mean
   }
   if("stlm" %in% includedModels){
-    forecasts$stlm <- forecast(object$stlm, h = h, xreg = xreg, level = level)
+    forecasts$stlm <- forecast(object$stlm, h = h, level = level)
     forecasts$pointForecasts[, "stlm"] <- forecasts$stlm$mean
   }
   if("tbats" %in% includedModels){
     forecasts$tbats <- forecast(object$tbats, h = h, level = level)
     forecasts$pointForecasts[, "tbats"] <- forecasts$tbats$mean
   }
-  
+
   # Apply the weights to the individual forecasts and create the final point forecast
   finalForecast <- rowSums(forecasts$pointForecast * weightsMatrix)
   # Conver the final forecast into a ts object
@@ -100,14 +112,14 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
                       start = start(forecasts[[object$models[1]]]$mean),
                       end = end(forecasts[[object$models[1]]]$mean),
                       frequency = object$frequency)
-  
+
   # Apply the weights to construct the fitted values
   fits <- sapply(includedModels, FUN = function(x) fitted(object[[x]]))
   fitsWeightsMatrix <- matrix(rep(forecastWeights, times = nrow(fits)),
                               nrow = nrow(fits), byrow = TRUE)
   fits <- rowSums(fits * fitsWeightsMatrix)
   resid <- object$x - fits
-  
+
   # Construct the prediction intervals
   nint <- length(level)
   upper <- lower <- matrix(NA, ncol = nint, nrow = length(finalForecast))
@@ -134,17 +146,17 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
   colnames(lower) <- colnames(upper) <- paste0(level, "%")
   forecasts$lower <- lower
   forecasts$upper <- upper
-  
+
   # Build the mean forecast as a ts object
   tsp.x <- tsp(object$x)
-  if (!is.null(tsp.x)){
-    start.f <- tsp(object$x)[2] + 1/object$frequency
-  } else{
-    start.f <- length(object$x) + 1
-  }
-  stop.f <- start.f + h / object$frequency
+#   if (!is.null(tsp.x)){
+#     start.f <- tsp(object$x)[2] + 1/object$frequency
+#   } else{
+#     start.f <- length(object$x) + 1
+#   }
+#   stop.f <- start.f + h / object$frequency
   forecasts$mean <- finalForecast
-  
+
   # Add the fitted and residuals values
   if(is.ts(object$x)){
     fits <- ts(fits)
@@ -153,7 +165,7 @@ forecast.hybridModel <- function(object, h = ifelse(object$frequency > 1, 2 * ob
   }
   forecasts$fitted <- fits
   forecasts$residuals <- resid
-  
+
   # Build a forecast object
   forecasts$x <- forecasts[[object$models[1]]]$x
   forecasts$method <- paste0(object$models, " with weight ", object$weights)
