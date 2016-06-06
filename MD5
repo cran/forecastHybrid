@@ -1,8 +1,12 @@
-ff340ef36954fa7285568974291c9bbd *DESCRIPTION
+8672b3c6c2b6d616d7060f28516a3837 *DESCRIPTION
 14d9802a5a89dff7a9ccd03cf453b7bd *NAMESPACE
 4576ee5c9526ac95fae5a84d597035a9 *R/forecast.hybridModel.R
 dde2a5252b4cd1f1839455e8a00ca1e3 *R/hybridModel.R
-193419f6c0906401d1deefd346ae03e9 *inst/NEWS.md
+5bbba5ec23b2f0101b1320cb6c32ef4b *build/vignette.rds
+95448f59f36bca9ae591334448e07b18 *inst/NEWS.md
+ba0738aa0d47380911c91f7e24eeb40d *inst/doc/forecastHybrid.R
+5e005624bcbebd1c2fb0742774ec90f6 *inst/doc/forecastHybrid.Rmd
+cb7e9be1af3ee54b42a31e91c0045d3c *inst/doc/forecastHybrid.html
 cafd8cd4da010337369ad05e81553ce3 *man/accuracy.Rd
 0d42a61b9fbdbe8951f4a3988496c7cc *man/accuracy.default.Rd
 a712705f4d2589936fdd1372a2a5172e *man/accuracy.hybridModel.Rd
@@ -18,4 +22,4 @@ eea7245f7eea92a22eba33a0dd853c4e *man/residuals.hybridModel.Rd
 3ec1a69f3a7e16690b05d4143a4e5803 *tests/testthat/test-forecast.hybridModel.R
 c11dd2569ea817bc76b396f84679c1d4 *tests/testthat/test-generics.R
 b8edb1e25cb26e43d3db9fe5a75acc44 *tests/testthat/test-hybridModel.R
-e71dbb91a36a18d940fb28e6b504da91 *vignettes/forecastHybrid.Rmd
+5e005624bcbebd1c2fb0742774ec90f6 *vignettes/forecastHybrid.Rmd
