@@ -6,7 +6,7 @@ if(require(forecast) & require(testthat)){
     expect_error(hybridModel(y = 1:10, models = 5))
     expect_error(hybridModel(y = matrix(1:10, nrow = 5, ncol = 2),
                              models = 5))
-    # Test for invalid mistmatch length of y and xreg in a.args/s.args later?
+    # Test for invalid mismatch length of y and xreg in a.args/s.args later?
     badxreg <- data.frame(rnorm(length(wineind) - 1))
     expect_warning(expect_error(hybridModel(y = wineind,
                                             a.args = list(xreg = badxreg))))
@@ -21,6 +21,8 @@ if(require(forecast) & require(testthat)){
     expect_error(hybridModel(wineind, num.cores = "a"))
     expect_error(hybridModel(wineind, models = ""))
     expect_error(hybridModel(wineind, parallel = "a"))
+    # warning when component model fits perfectly and weights = "insample.error"
+    expect_warning(hybridModel(ts(1:100, f = 4), weights = "insample.errors"))
 
   })
   test_that("Testing for warnings", {
@@ -35,7 +37,7 @@ if(require(forecast) & require(testthat)){
     expect_warning(hybridModel(ts(rnorm(20), f = 12), models = "aes"))
     # Currently unimplemented features
     expect_warning(hybridModel(wineind, models = "ae", parallel = TRUE))
-    expect_warning(hybridModel(wineind, models = "ae", weights = "cv.errors"))
+    #expect_warning(hybridModel(wineind, models = "ae", weights = "cv.errors"))
   })
   test_that("Testing valid inputs", {
     set.seed(54321)
@@ -66,4 +68,9 @@ if(require(forecast) & require(testthat)){
     expect_error(plot(exampleModel, type = "fit"), NA)
     expect_error(plot(exampleModel, type = "models"), NA)
   })
+  context("Testing cv.errors")
+    test_that("Testing hybridModel(weights = \"cv.errors\")", {
+      expect_error(cvMod <- hybridModel(woolyrnq, weights = "cv.errors"), NA)
+      expect_true(length(cvMod$weights) == length(unique(cvMod$weights)))
+    })
 }

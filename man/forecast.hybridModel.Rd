@@ -14,7 +14,7 @@
 periods is set to the number of rows of \code{xreg}.}
 
 \item{xreg}{future values of regression variables (for use if one of the ensemble methods used
-in creating the hybrid forecast was \code{auto.arima} or \code{stlm} and a \code{xreg} was used in the fit)}
+in creating the hybrid forecast was \code{auto.arima}, \code{nnetar}, or \code{stlm} and the model(s) used \code{xreg} in the fit)}
 
 \item{level}{confidence level for prediction intervals. This can be expressed as a decimal between 0.0 and 1.0 or numeric
 between 0 and 100.}
@@ -31,22 +31,35 @@ Forecast method for hybrid models.
 }
 \details{
 if \code{xreg} was used in construcing the \code{hybridModel},
-it must also be passed into \code{forecast.hybridModel}
+it must also be passed into \code{forecast.hybridModel}.
+\cr
+\cr
+While prediction intervals are produced for the
+final ensemble forecast model, these should be viewed conservatively as insights to the forecast's uncertainty.
+Currently these are constructed using the most extreme interval from each component model for each horizon, so
+the composite prediction intervals do not have statistical guarantees of asymptotic efficiency. More sophisticated
+and rigorous techniques are planned, however, particularly when cross validation approaches are used.
 }
 \examples{
 \dontrun{
 mod <- hybridModel(AirPassengers)
 fc <- forecast(mod)
+
 # View the point forecasts
 fc$mean
+
 # View the upper prediction interval
 fc$upper
+
 # View the lower prediction interval
 fc$lower
+
 # Plot the forecast
 plot(fc)
 }
-
+}
+\author{
+David Shaub
 }
 \seealso{
 \code{\link{hybridModel}}

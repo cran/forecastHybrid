@@ -8,28 +8,40 @@
 #' @param h number of periods for forecasting. If \code{xreg} is used, \code{h} is ignored and the number of forecast
 #' periods is set to the number of rows of \code{xreg}.
 #' @param xreg future values of regression variables (for use if one of the ensemble methods used
-#' in creating the hybrid forecast was \code{auto.arima} or \code{stlm} and a \code{xreg} was used in the fit)
+#' in creating the hybrid forecast was \code{auto.arima}, \code{nnetar}, or \code{stlm} and the model(s) used \code{xreg} in the fit)
 #' @param level confidence level for prediction intervals. This can be expressed as a decimal between 0.0 and 1.0 or numeric
 #' between 0 and 100.
 #' @param fan if \code{TRUE}, level is set to \code{seq(51, 99, by = 3)}. This is suitable for fan plots.
 #' @param ... other arguments; currently not used.
 #' @seealso \code{\link{hybridModel}}
 #' @details if \code{xreg} was used in construcing the \code{hybridModel},
-#' it must also be passed into \code{forecast.hybridModel}
+#' it must also be passed into \code{forecast.hybridModel}.
+#' \cr
+#' \cr
+#' While prediction intervals are produced for the
+#' final ensemble forecast model, these should be viewed conservatively as insights to the forecast's uncertainty.
+#' Currently these are constructed using the most extreme interval from each component model for each horizon, so
+#' the composite prediction intervals do not have statistical guarantees of asymptotic efficiency. More sophisticated
+#' and rigorous techniques are planned, however, particularly when cross validation approaches are used.
 #' @return An object of class \link[forecast]{forecast}.
 #' @examples
 #' \dontrun{
 #' mod <- hybridModel(AirPassengers)
 #' fc <- forecast(mod)
+#'
 #' # View the point forecasts
 #' fc$mean
+#'
 #' # View the upper prediction interval
 #' fc$upper
+#'
 #' # View the lower prediction interval
 #' fc$lower
+#'
 #' # Plot the forecast
 #' plot(fc)
 #' }
+#'@author David Shaub
 #'
 forecast.hybridModel <- function(object,
                                  h = ifelse(object$frequency > 1, 2 * object$frequency, 10),
@@ -40,6 +52,11 @@ forecast.hybridModel <- function(object,
   # Check inputs
   if(!is.hybridModel(object)){
     stop("The object must be constructed from hybridModel().")
+  }
+
+  # apply nrow(xreg) to h if h isn't provided and xreg is
+  if(missing(h) && !missing(xreg)){
+    h <- nrow(xreg)
   }
 
   # xreg should be a matrix and have same number of observations as the horizon
@@ -61,7 +78,7 @@ forecast.hybridModel <- function(object,
   if(!is.numeric(h)){
     stop("The forecast horizon h must be a positive integer.")
   }
-  if(as.logical((h %% 1L)) || h <= 0L){
+  if(!as.logical((h %% 1L == 0L)) || h <= 0L){
     stop("The forecast horizon h must be a positive integer.")
   }
 
@@ -97,7 +114,7 @@ forecast.hybridModel <- function(object,
     forecasts$pointForecasts[, "nnetar"] <- forecasts$nnetar$mean
   }
   if("stlm" %in% includedModels){
-    forecasts$stlm <- forecast(object$stlm, h = h, level = level)
+    forecasts$stlm <- forecast(object$stlm, h = h, xreg = xreg, level = level)
     forecasts$pointForecasts[, "stlm"] <- forecasts$stlm$mean
   }
   if("tbats" %in% includedModels){
@@ -149,12 +166,12 @@ forecast.hybridModel <- function(object,
 
   # Build the mean forecast as a ts object
   tsp.x <- tsp(object$x)
-#   if (!is.null(tsp.x)){
-#     start.f <- tsp(object$x)[2] + 1/object$frequency
-#   } else{
-#     start.f <- length(object$x) + 1
-#   }
-#   stop.f <- start.f + h / object$frequency
+  #   if (!is.null(tsp.x)){
+  #     start.f <- tsp(object$x)[2] + 1/object$frequency
+  #   } else{
+  #     start.f <- length(object$x) + 1
+  #   }
+  #   stop.f <- start.f + h / object$frequency
   forecasts$mean <- finalForecast
 
   # Add the fitted and residuals values
@@ -168,7 +185,7 @@ forecast.hybridModel <- function(object,
 
   # Build a forecast object
   forecasts$x <- forecasts[[object$models[1]]]$x
-  forecasts$method <- paste0(object$models, " with weight ", object$weights)
+  forecasts$method <- paste0(object$models, " with weight ", round(object$weights, 3))
   forecasts$level <- level
   class(forecasts) <- "forecast"
   return(forecasts)
