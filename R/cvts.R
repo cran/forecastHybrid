@@ -5,7 +5,7 @@
 #' @export
 #' @param x the input time series.
 #' @param FUN the model function used. Custom functions are allowed. See details and examples.
-#' @param FCFUN a function that proces point forecasts for the model function. This defaults to \code{\link{forecast}}. Custom functions are allowed. See details and examples.
+#' @param FCFUN a function that process point forecasts for the model function. This defaults to \code{\link{forecast}}. Custom functions are allowed. See details and examples.
 #' See details.
 #' @param rolling should a rolling procedure be used? If TRUE, nonoverlapping windows of size \code{maxHorizon}
 #' will be used for fitting each model. If FALSE, the size of the dataset used for training will grow
@@ -31,7 +31,7 @@
 #' For the rolling approach, training points are heavily recycled, both in terms of used for fitting
 #' and in generating forecast errors at each of the forecast horizons from \code{1:maxHorizon}. In constrast, the models fit with
 #' the non-rolling approach share less overlap, and the predicted forecast values are also only compared to the actual values once.
-#' The former approach is similar to leave-one-out cross validatoin whlie the latter resembles k-fold cross validation. As a result,
+#' The former approach is similar to leave-one-out cross validation while the latter resembles k-fold cross validation. As a result,
 #' rolling cross validation requires far more iterations and computationally takes longer to complete, but a disadvantage of the
 #' non-rolling approach is the greater variance and general instability of cross-validated errors.
 #' \cr
@@ -123,11 +123,9 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
     x <- ts(x, frequency = f)
   }
 
-
   if(any(sapply(c(x, windowSize, maxHorizon), FUN = function(x) !is.numeric(x)))){
     stop("The arguments x, windowSize, and maxHorizon must all be numeric.")
   }
-
 
   if(any(c(windowSize, maxHorizon) < 1L)){
     stop("The arguments windowSize, and maxHorizon must be positive integers.")
@@ -192,7 +190,6 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   if(horizonAverage){
     results <- as.matrix(rowMeans(results), ncol = 1)
   }
-
 
   if(!saveModels){
     fits <- NULL

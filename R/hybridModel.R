@@ -10,8 +10,9 @@
 #' @param lambda
 #' Box-Cox transformation parameter.
 #' Ignored if NULL. Otherwise, data transformed before model is estimated.
-#' @param models A character string of up to five characters indicating which contributing models to use:
-#' a (\code{\link[forecast]{auto.arima}}), e (\code{\link[forecast]{ets}}), n (\code{\link[forecast]{nnetar}}),
+#' @param models A character string of up to six characters indicating which contributing models to use:
+#' a (\code{\link[forecast]{auto.arima}}), e (\code{\link[forecast]{ets}}),
+#' f (\code{\link{thetam}}), n (\code{\link[forecast]{nnetar}}),
 #' s (\code{\link[forecast]{stlm}}) and t (\code{\link[forecast]{tbats}}).
 #' @param a.args an optional \code{list} of arguments to pass to \code{\link[forecast]{auto.arima}}. See details.
 #' @param e.args an optional \code{list} of arguments to pass to \code{\link[forecast]{ets}}. See details.
@@ -42,7 +43,7 @@
 #' the single horizon given in \code{cvHorizon}.
 #' @param verbose Should the status of which model is being fit/cross validated be printed to the terminal?
 #' @seealso \code{\link{forecast.hybridModel}}, \code{\link[forecast]{auto.arima}},
-#' \code{\link[forecast]{ets}}, \code{\link[forecast]{nnetar}},
+#' \code{\link[forecast]{ets}}, \code{\link{thetam}}, \code{\link[forecast]{nnetar}},
 #' \code{\link[forecast]{stlm}}, \code{\link[forecast]{tbats}}
 #' @return An object of class hybridModel.
 #' The individual component models are stored inside of the object
@@ -72,7 +73,7 @@
 #' @examples
 #' \dontrun{
 #'
-#' # Fit an auto.arima, ets, nnetar, stlm, and tbats model
+#' # Fit an auto.arima, ets, thetam, nnetar, stlm, and tbats model
 #' # on the time series with equal weights
 #' mod1 <- hybridModel(AirPassengers)
 #' plot(forecast(mod1))
@@ -93,7 +94,7 @@
 #'
 #' @author David Shaub
 #'
-hybridModel <- function(y, models = "aenst",
+hybridModel <- function(y, models = "aefnst",
                         lambda = NULL,
                         a.args = NULL,
                         e.args = NULL,
@@ -116,21 +117,29 @@ hybridModel <- function(y, models = "aenst",
     stop("The time series must be numeric and may not be a matrix or dataframe object.")
   }
   if(!length(y)){
-    stop("The time series must have obserations")
+    stop("The time series must have observations")
   }
+
+   if(length(y) < 4){
+      stop("The time series must have at least four observations")
+   }
+
   y <- as.ts(y)
 
   # Match arguments to ensure validity
   weights <- match.arg(weights)
+  if(weights == "insample.errors"){
+     warning("Using insample.error weights is not recommended for accuracy and may be deprecated in the future.")
+  }
   errorMethod <- match.arg(errorMethod)
 
   # Match the specified models
   expandedModels <- unique(tolower(unlist(strsplit(models, split = ""))))
-  if(length(expandedModels) > 5L){
+  if(length(expandedModels) > 6L){
     stop("Invalid models specified.")
   }
   # All characters must be valid
-  if(!(all(expandedModels %in% c("a", "e", "n", "s", "t")))){
+  if(!(all(expandedModels %in% c("a", "e", "f", "n", "s", "t")))){
     stop("Invalid models specified.")
   }
   if(!length(expandedModels)){
@@ -170,6 +179,11 @@ hybridModel <- function(y, models = "aenst",
     warning("frequency(y) >= 24. The ets model will not be used.")
     expandedModels <- expandedModels[expandedModels != "e"]
   }
+  if(is.element("f", expandedModels) && frequency(y) >=24){
+     warning("frequency(y) >= 24. The Theta model will not be used.")
+     expandedModels <- expandedModels[expandedModels != "f"]
+  }
+
   if(is.element("s", expandedModels)){
     if(frequency(y) < 2L){
       warning("The stlm model requires that the input data be a seasonal ts object. The stlm model will not be used.")
@@ -235,6 +249,13 @@ hybridModel <- function(y, models = "aenst",
     }
     modelResults$ets <- do.call(ets, c(list(y), e.args))
   }
+  # thetam()
+  if(is.element("f", expandedModels)){
+     if(verbose){
+        cat("Fitting the thetam model\n")
+     }
+     modelResults$thetam <- thetam(y)
+  }
   # nnetar()
   if(is.element("n", expandedModels)){
     if(verbose){
@@ -264,7 +285,7 @@ hybridModel <- function(y, models = "aenst",
     if(verbose){
       cat("Fitting the tbats model\n")
     }
-    modelResults$tbats <- do.call(tbats, c(list(y), e.args))
+    modelResults$tbats <- do.call(tbats, c(list(y), t.args))
   }
 
   # Set the model weights
@@ -303,6 +324,15 @@ hybridModel <- function(y, models = "aenst",
                                  horizonAverage = horizonAverage,
                                  verbose = FALSE,
                                  windowSize = windowSize)
+        } else if(i == "f"){
+           if(verbose){
+              cat("Cross validating the thetam model\n")
+           }
+           modResults$thetam <- cvts(y, FUN = thetam,
+                                  maxHorizon = cvHorizon,
+                                  horizonAverage = horizonAverage,
+                                  verbose = FALSE,
+                                  windowSize = windowSize)
         } else if(i == "n"){
           if(verbose){
             cat("Cross validating the nnetar model\n")
@@ -339,8 +369,10 @@ hybridModel <- function(y, models = "aenst",
     for(i in expandedModels){
       if(i == "a"){
         modelResults$weights[index] <- accuracy(modResults$auto.arima)[cvHorizon, errorMethod]
-      }else if(i == "e"){
+      } else if(i == "e"){
         modelResults$weights[index] <- accuracy(modResults$ets)[cvHorizon, errorMethod]
+      } else if(i == "f"){
+         modelResults$weights[index] <- accuracy(modResults$thetam)[cvHorizon, errorMethod]
       } else if(i == "n"){
         modelResults$weights[index] <- accuracy(modResults$nnetar)[cvHorizon, errorMethod]
       } else if(i == "s"){
@@ -518,7 +550,7 @@ accuracy.hybridModel <- function(f,
 #'Currently the method only implements \code{ME}, \code{RMSE}, and \code{MAE}. The accuracy measures
 #'\code{MPE}, \code{MAPE}, and \code{MASE} are not calculated. The accuracy is calculated for each
 #'forecast horizon up to \code{maxHorizon}
-#'
+#'@export
 accuracy.cvts <- function(f, ...){
   ME <- colMeans(f$residuals)
   RMSE <- apply(f$residuals, MARGIN = 2, FUN = function(x){sqrt(sum(x ^ 2)/ length(x))})
@@ -575,6 +607,8 @@ print.hybridModel <- function(x, ...){
 #' \code{\link[forecast]{plot.tbats}}. Note: no plot
 #' methods exist for \code{nnetar} and \code{stlm} objects, so these will not be plotted with
 #' \code{type = "models"}.
+#' @param ggplot should the \code{\link{autoplot}} function
+#' be used (when available) for the plots?
 #' @param ... other arguments passed to \link{plot}.
 #' @seealso \code{\link{hybridModel}}
 #' @return None. Function produces a plot.
@@ -593,28 +627,52 @@ print.hybridModel <- function(x, ...){
 #' @export
 #'
 #' @author David Shaub
+#' @import ggplot2
 #'
 plot.hybridModel <- function(x,
                              type = c("fit", "models"),
+                             ggplot = FALSE,
                              ...){
-  type <- match.arg(type)
-  #chkDots(...)
-  plotModels <- x$models
-  if(type == "fit"){
-    # Set the highest and lowest axis scale
-    ymax <- max(sapply(plotModels, FUN = function(i) max(fitted(x[[i]]), na.rm = TRUE)))
-    ymin <- min(sapply(plotModels, FUN = function(i) min(fitted(x[[i]]), na.rm = TRUE)))
-    range <- ymax - ymin
-    plot(x$x, ylim = c(ymin - 0.05 * range, ymax + 0.25 * range), ...)
-    #title(main = "Plot of original series (black) and fitted component models", outer = TRUE)
-    for(i in seq_along(plotModels)){
-      lines(fitted(x[[plotModels[i]]]), col = i + 1)
-    }
-    legend("top", plotModels, fill = 2:(length(plotModels) + 1), horiz = TRUE)
-  } else if(type == "models"){
-    plotModels <- x$models[x$models != "stlm" & x$models != "nnetar"]
-    for(i in seq_along(plotModels)){
-      plot(x[[plotModels[i]]])
-    }
-  }
+   type <- match.arg(type)
+   #chkDots(...)
+   plotModels <- x$models
+   if(type == "fit"){
+      if(ggplot){
+         plotFrame <- data.frame(matrix(0, nrow = length(x$x), ncol = 0))
+         for(i in plotModels){
+            plotFrame[i] <- fitted(x[[i]])
+         }
+         names(plotFrame) <- plotModels
+         plotFrame$date <- as.Date(time(x$x))
+         # Appease R CMD check for undeclared variable, value
+         variable <- NULL
+         value <- NULL
+         plotFrame <- reshape2::melt(plotFrame, id = "date")
+         ggplot(data = plotFrame, 
+                aes(x = date, y = as.numeric(value), col = variable)) +
+            geom_line() + scale_y_continuous(name = "y")
+         
+      } else{
+         # Set the highest and lowest axis scale
+         ymax <- max(sapply(plotModels, FUN = function(i) max(fitted(x[[i]]), na.rm = TRUE)))
+         ymin <- min(sapply(plotModels, FUN = function(i) min(fitted(x[[i]]), na.rm = TRUE)))
+         range <- ymax - ymin
+         plot(x$x, ylim = c(ymin - 0.05 * range, ymax + 0.25 * range), ...)
+         #title(main = "Plot of original series (black) and fitted component models", outer = TRUE)
+         for(i in seq_along(plotModels)){
+            lines(fitted(x[[plotModels[i]]]), col = i + 1)
+         }
+         legend("top", plotModels, fill = 2:(length(plotModels) + 1), horiz = TRUE)
+      }
+   } else if(type == "models"){
+      plotModels <- x$models[x$models != "stlm" & x$models != "nnetar"]
+      for(i in seq_along(plotModels)){
+         # tbats isn't supported by autoplot
+         if(ggplot && !(plotModels[i] %in% c("tbats", "bats", "nnetar"))){
+            autoplot(x[[plotModels[i]]])
+         } else if(!ggplot){
+            plot(x[[plotModels[i]]])
+         }
+      }
+   }
 }

@@ -5,7 +5,8 @@
 \title{Hybrid forecast}
 \usage{
 \method{forecast}{hybridModel}(object, h = ifelse(object$frequency > 1, 2 *
-  object$frequency, 10), xreg = NULL, level = c(80, 95), fan = FALSE, ...)
+  object$frequency, 10), xreg = NULL, level = c(80, 95), PI = TRUE,
+  fan = FALSE, ...)
 }
 \arguments{
 \item{object}{a hybrid time series model fit with \link{hybridModel}.}
@@ -18,6 +19,10 @@ in creating the hybrid forecast was \code{auto.arima}, \code{nnetar}, or \code{s
 
 \item{level}{confidence level for prediction intervals. This can be expressed as a decimal between 0.0 and 1.0 or numeric
 between 0 and 100.}
+
+\item{PI}{should prediction intervals be produced? If a \code{nnetar} model is in the ensemble, this can be quite slow,
+so disabling prediction intervals will speed up the forecast generation. If \code{FALSE}, the arguments \code{level}
+and \code{fan} are ignored.}
 
 \item{fan}{if \code{TRUE}, level is set to \code{seq(51, 99, by = 3)}. This is suitable for fan plots.}
 

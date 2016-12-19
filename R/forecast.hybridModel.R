@@ -12,6 +12,9 @@
 #' @param level confidence level for prediction intervals. This can be expressed as a decimal between 0.0 and 1.0 or numeric
 #' between 0 and 100.
 #' @param fan if \code{TRUE}, level is set to \code{seq(51, 99, by = 3)}. This is suitable for fan plots.
+#' @param PI should prediction intervals be produced? If a \code{nnetar} model is in the ensemble, this can be quite slow,
+#' so disabling prediction intervals will speed up the forecast generation. If \code{FALSE}, the arguments \code{level}
+#' and \code{fan} are ignored.
 #' @param ... other arguments; currently not used.
 #' @seealso \code{\link{hybridModel}}
 #' @details if \code{xreg} was used in construcing the \code{hybridModel},
@@ -47,6 +50,7 @@ forecast.hybridModel <- function(object,
                                  h = ifelse(object$frequency > 1, 2 * object$frequency, 10),
                                  xreg = NULL,
                                  level = c(80, 95),
+                                 PI = TRUE,
                                  fan = FALSE, ...){
 
   # Check inputs
@@ -109,8 +113,12 @@ forecast.hybridModel <- function(object,
     forecasts$ets <- forecast(object$ets, h = h, level = level)
     forecasts$pointForecasts[, "ets"] <- forecasts$ets$mean
   }
+  if("thetam" %in% includedModels){
+     forecasts$thetam <- forecast(object$thetam, h = h, level = level)
+     forecasts$pointForecasts[, "thetam"] <- forecasts$thetam$mean
+  }
   if("nnetar" %in% includedModels){
-    forecasts$nnetar <- forecast(object$nnetar, h = h, xreg = xreg)
+    forecasts$nnetar <- forecast(object$nnetar, h = h, xreg = xreg, PI = PI, level = level)
     forecasts$pointForecasts[, "nnetar"] <- forecasts$nnetar$mean
   }
   if("stlm" %in% includedModels){
@@ -138,31 +146,34 @@ forecast.hybridModel <- function(object,
   resid <- object$x - fits
 
   # Construct the prediction intervals
-  nint <- length(level)
-  upper <- lower <- matrix(NA, ncol = nint, nrow = length(finalForecast))
-  # Prediction intervals for nnetar do not currently work, so exclude these
-  piModels <- object$models[object$models != "nnetar"]
-  # Produce each upper/lower limit
-  for(i in 1:nint){
-    # Produce the upper/lower limit for each model for a given level
-    tmpUpper <- tmpLower <- matrix(NA, nrow = h, ncol = length(piModels))
-    j2 <- 1
-    for(j in piModels){
-      tmpUpper[, j2] <- as.numeric(forecasts[[j]]$upper[, i])
-      tmpLower[, j2] <- as.numeric(forecasts[[j]]$lower[, i])
-      j2 <- j2 + 1
-    }
-    # upper/lower prediction intervals are the extreme values for now
-    # We can modify it for other approaches by changing the FUN here
-    upper[, i] <- apply(tmpUpper, 1, FUN = max)
-    lower[, i] <- apply(tmpLower, 1, FUN = min)
+  if(PI){
+     nint <- length(level)
+     upper <- lower <- matrix(NA, ncol = nint, nrow = length(finalForecast))
+     # Prediction intervals for nnetar do not currently work, so exclude these
+     piModels <- object$models#[object$models != "nnetar"]
+     # Produce each upper/lower limit
+     for(i in 1:nint){
+        # Produce the upper/lower limit for each model for a given level
+        tmpUpper <- tmpLower <- matrix(NA, nrow = h, ncol = length(piModels))
+        j2 <- 1
+        for(j in piModels){
+           tmpUpper[, j2] <- as.numeric(forecasts[[j]]$upper[, i])
+           tmpLower[, j2] <- as.numeric(forecasts[[j]]$lower[, i])
+           j2 <- j2 + 1
+        }
+        # upper/lower prediction intervals are the extreme values for now
+        # We can modify it for other approaches by changing the FUN here
+        upper[, i] <- apply(tmpUpper, 1, FUN = max)
+        lower[, i] <- apply(tmpLower, 1, FUN = min)
+     }
+     if(!is.finite(max(upper)) || !is.finite(min(lower))){
+        warning("Prediction intervals are not finite.")
+     }
+     colnames(lower) <- colnames(upper) <- paste0(level, "%")
+     forecasts$lower <- lower
+     forecasts$upper <- upper
   }
-  if(!is.finite(max(upper)) || !is.finite(min(lower))){
-    warning("Prediction intervals are not finite.")
-  }
-  colnames(lower) <- colnames(upper) <- paste0(level, "%")
-  forecasts$lower <- lower
-  forecasts$upper <- upper
+
 
   # Build the mean forecast as a ts object
   tsp.x <- tsp(object$x)

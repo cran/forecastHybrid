@@ -14,7 +14,7 @@ cvts(x, FUN = NULL, FCFUN = NULL, rolling = FALSE, windowSize = 84,
 
 \item{FUN}{the model function used. Custom functions are allowed. See details and examples.}
 
-\item{FCFUN}{a function that proces point forecasts for the model function. This defaults to \code{\link{forecast}}. Custom functions are allowed. See details and examples.
+\item{FCFUN}{a function that process point forecasts for the model function. This defaults to \code{\link{forecast}}. Custom functions are allowed. See details and examples.
 See details.}
 
 \item{rolling}{should a rolling procedure be used? If TRUE, nonoverlapping windows of size \code{maxHorizon}
@@ -51,7 +51,7 @@ after each iteration.
 For the rolling approach, training points are heavily recycled, both in terms of used for fitting
 and in generating forecast errors at each of the forecast horizons from \code{1:maxHorizon}. In constrast, the models fit with
 the non-rolling approach share less overlap, and the predicted forecast values are also only compared to the actual values once.
-The former approach is similar to leave-one-out cross validatoin whlie the latter resembles k-fold cross validation. As a result,
+The former approach is similar to leave-one-out cross validation while the latter resembles k-fold cross validation. As a result,
 rolling cross validation requires far more iterations and computationally takes longer to complete, but a disadvantage of the
 non-rolling approach is the greater variance and general instability of cross-validated errors.
 \cr
