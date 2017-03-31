@@ -42,10 +42,9 @@ plot(hm, type = "fit")
 plot(hm, type = "models")
 }
 }
-\author{
-David Shaub
-}
 \seealso{
 \code{\link{hybridModel}}
 }
-
+\author{
+David Shaub
+}

@@ -16,9 +16,11 @@
 #' @param maxHorizon maximum length of the forecast horizon to use for computing errors.
 #' @param horizonAverage should the final errors be an average over all forecast horizons up to \code{maxHorizon} instead of producing
 #' metrics for each individual horizon?
+#' @param xreg External regressors to be used to fit the model. Only used if FUN accepts xreg as an argument. FCFUN is also expected to accept it (see details)
 #' @param saveModels should the individual models be saved? Set this to \code{FALSE} on long time series to save memory.
 #' @param saveForecasts should the individual forecast from each model be saved? Set this to \code{FALSE} on long time series to save memory.
 #' @param verbose should the current progress be printed to the console?
+#' @param ... Other arguments to be passed to the model function FUN
 #'
 #' @details Cross validation of time series data is more complicated than regular k-folds or leave-one-out cross validation of datasets
 #' without serial correlation since observations \eqn{x_t}{x[t]} and \eqn{x_{t+n}}{x[t+n]} are not independent. The \code{cvts()} function overcomes
@@ -51,9 +53,14 @@
 #' can be safely done if there is no need to examine individual models fit at every stage of cross validation since the
 #' forecasts from each fold and the associated residuals are always saved.
 #'
+#' External regressors are allowed via the xreg argument. It is assumed that both FUN and FCFUN accept the xreg parameter if xreg is not NULL.
+#' If FUN does not accept the xreg parameter a warning will be given. No warning is provided if FCFUN does not use the xreg parameter.
+#' @seealso \code{\link{accuracy.cvts}}
+#'
 #' @examples
 #' cvmod1 <- cvts(AirPassengers, FUN = stlm,
 #'                windowSize = 48, maxHorizon = 12)
+#' accuracy(cvmod1)
 #'
 #' \dontrun{
 #' cvmod2 <- cvts(USAccDeaths, FUN = ets,
@@ -99,9 +106,10 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  rolling = FALSE, windowSize = 84,
                  maxHorizon = 5,
                  horizonAverage = FALSE,
+                 xreg = NULL,
                  saveModels = ifelse(length(x) > 500, FALSE, TRUE),
                  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE),
-                 verbose = TRUE){
+                 verbose = TRUE, ...){
   # Default model function
   # This can be useful for methods that estimate the model and forecasts in one step
   # e.g. GMDH() from the "GMDH" package or thetaf()/meanf()/rwf() from "forecast". In this case,
@@ -140,52 +148,63 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
     stop("The time series must be longer than windowSize + 2 * maxHorizon.")
   }
 
+  # Check if fitting function accepts xreg when xreg is not NULL
+  xregUse <- FALSE
+  if (!is.null(xreg)) {
+    fitArgs <- formals(FUN)
+    if (any(grepl("xreg", names(fitArgs)))) {
+      xregUse <- TRUE
+      xreg <- as.matrix(xreg)
+    } else
+      warning("Ignoring xreg parameter since fitting function does not accept xreg")
+  }
+  
   # Combined code for rolling/nonrolling CV
 
   results <- matrix(NA,
-                    nrow = ifelse(rolling, length(x) - windowSize - maxHorizon, as.integer((length(x) - windowSize) / maxHorizon)),
+                    nrow = ifelse(rolling, length(x) - windowSize - maxHorizon + 1, as.integer((length(x) - windowSize) / maxHorizon)),
                     ncol = maxHorizon)
 
   forecasts <- fits <- vector("list", nrow(results))
+  slices <- tsPartition(x, rolling, windowSize, maxHorizon)
 
-  # Needed for nonrolling
-  startWindow <- 1
-  endWindow <- windowSize
   # Perform the cv fits
   # adapted from code from Rob Hyndman at http://robjhyndman.com/hyndsight/tscvexample/
   # licensend under >= GPL2 from the author
-  stsp <- tsp(x)[1]
-  for(i in 1:nrow(results)){
+  
+  for (sliceNum in seq_along(slices)) {
     if(verbose){
-      cat("Fitting fold", i, "of", nrow(results), "\n")
+      cat("Fitting fold", sliceNum, "of", nrow(results), "\n")
     }
-    # Sample the correct slice for rolling
-    if(rolling){
-      etsp <- stsp + (i + windowSize - 2) / frequency(x)
-      y <- window(x, start = stsp, end = etsp)
-      fstsp <- stsp + (i + windowSize - 1) / frequency(x)
-      fetsp <- fstsp + (maxHorizon - 1) / frequency(x)
-    }
-    # Sample the correct slice for nonrolling
-    else{
-      etsp <- stsp + (windowSize - 1) / frequency(x) + maxHorizon * (i - 1) / frequency(x)
-      y <- window(x, end = etsp)
-      fstsp <- tsp(y)[2] + 1 / frequency(x)
-      fetsp <- stsp + (windowSize - 1) / frequency(x) + maxHorizon * i / frequency(x)
-    }
-    ynext <- window(x, start = fstsp, end = fetsp)
 
-    # Perfom the simulation
-    mod <- do.call(FUN, list(y))
-    fc <- do.call(FCFUN, list(mod, h = maxHorizon))
+    trainIndices <- slices[[sliceNum]]$trainIndices
+    testIndices <- slices[[sliceNum]]$testIndices
+    
+    tsTrain <- tsSubsetWithIndices(x, trainIndices)
+    tsTest <- tsSubsetWithIndices(x, testIndices)
+
+    if (xregUse) {
+      xregTrain <- xreg[trainIndices,,drop = FALSE]
+      xregTest <- xreg[testIndices,,drop = FALSE]
+      mod <- do.call(FUN, list(tsTrain, xreg = xregTrain, ...))
+      fc <- do.call(FCFUN, list(mod, xreg = xregTest, h = maxHorizon))
+    } else {
+      mod <- do.call(FUN, list(tsTrain, ...))
+      fc <- do.call(FCFUN, list(mod, h = maxHorizon))
+    }
+    
     if(saveModels){
-      fits[[i]] <- mod
+      fits[[sliceNum]] <- mod
     }
+
     if(saveForecasts){
-      forecasts[[i]] <- fc
+      forecasts[[sliceNum]] <- fc
     }
-    results[i, ] <- ynext - fc$mean
+    
+    results[sliceNum, ] <- tsTest - fc$mean
+
   }
+  
   # Average the results from all forecast horizons up to maxHorizon
   if(horizonAverage){
     results <- as.matrix(rowMeans(results), ncol = 1)
@@ -197,10 +216,109 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   if(!saveForecasts){
     forecasts <- NULL
   }
-  result <- list(forecasts = forecasts, models = fits, residuals = results)
+  
+  params <- list(FUN = FUN,
+                 FCFUN = FCFUN,
+                 rolling = rolling,
+                 windowSize = windowSize,
+                 maxHorizon = maxHorizon,
+                 horizonAverage = horizonAverage,
+                 saveModels = saveModels,
+                 saveForecasts = saveForecasts,
+                 verbose = verbose,
+                 extra = list(...))
+  
+  result <- list(x = x,
+               xreg = xreg,
+               params = params,
+               forecasts = forecasts, 
+               models = fits, 
+               residuals = results)
+  
   class(result) <- "cvts"
   return(result)
 }
 
+#' Generate training and test indices for time series cross validation
+#' 
+#' Training and test indices are generated for time series cross validation.
+#' Generated indices are based on the training windowSize, forecast horizons
+#' and whether a rolling or non-rolling cross validation procedure is desired.
+#' 
+#' @export 
+#' @param x A time series
+#' @param rolling Should indices be generated for a rolling or non-rolling procedure?
+#' @param windowSize Size of window for training
+#' @param maxHorizon Maximum forecast horizon
+#' 
+#' @return List containing train and test indices for each fold
+#' 
+#' @author Ganesh Krishnan
+#' @examples 
+#' \dontrun{
+#' tsPartition(AirPassengers, rolling = TRUE, windowSize = 10, maxHorizon = 2)
+#' }
 
+tsPartition <- function(x, rolling, windowSize, maxHorizon) {
+  numPartitions <- ifelse(rolling, length(x) - windowSize - maxHorizon + 1, as.integer((length(x) - windowSize) / maxHorizon))
+
+  slices <- rep(list(NA), numPartitions)
+  start <- 1
+
+    for (i in 1:numPartitions) {
+        if(rolling){
+            trainIndices <- seq(start, start + windowSize - 1, 1)
+            testIndices <-  seq(start + windowSize, start + windowSize + maxHorizon - 1)
+            start <- start + 1
+        }
+        ## Sample the correct slice for nonrolling
+        else{
+            trainIndices <- seq(start, start + windowSize - 1 + maxHorizon * (i - 1), 1)
+            testIndices <- seq(start + windowSize + maxHorizon * (i - 1), start + windowSize - 1 + maxHorizon * i)
+        }
+
+        slices[[i]] <- list(trainIndices = trainIndices, testIndices = testIndices)
+    }
+
+    return(slices)
+}
+
+#' Extract cross validated rolling forecasts
+#' 
+#' Obtain cross validated forecasts when rolling cross validation is used. The object is not
+#' inspected to see if it was fit using a rolling origin
+#' 
+#' @export 
+#' @param cv An object of class cvts
+#' @param horizon The forecast horizon from each fold to extract
+#' 
+#' @return Forecasts computed via a rolling origin
+#' 
+#' @details Combine the cross validated forecasts fit with a rolling origin. This may be useful
+#' to visualize and investigate the cross validated performance of the model
+#' 
+#' @author Ganesh Krishnan
+#' @examples 
+#' \dontrun{
+#' cv <- cvts(AirPassengers, FUN = "ets", FCFUN = "forecast", 
+#'         rolling = TRUE, windowSize = 12, horizon = 2)
+#' 
+#' extractRollingForecasts(cv)
+#' }
+extractForecasts <- function(cv, horizon = 1) {
+      if (horizon > cv$params$maxHorizon) 
+         stop("Cannot extract forecasts with a horizon greater than the model maxHorizon")
+      pointfList <- Map(function(fcast) {
+         pointf <- fcast$mean
+         window(pointf, start = time(pointf)[horizon], 
+                                   end = time(pointf)[horizon])
+         }, 
+         cv$forecasts) 
+      
+      pointf <- Reduce(tsCombine, pointfList)
+      
+      #Ensure all points in the original series are represented (makes it easy for comparisons)
+      template <- replace(cv$x, c(1:length(cv$x)), NA)
+      return(tsCombine(pointf, template))
+}
 
