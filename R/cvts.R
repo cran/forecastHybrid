@@ -2,6 +2,8 @@
 #'
 #' Perform cross validation on a time series.
 #'
+#' @import doParallel
+#' @import foreach
 #' @export
 #' @param x the input time series.
 #' @param FUN the model function used. Custom functions are allowed. See details and examples.
@@ -20,6 +22,9 @@
 #' @param saveModels should the individual models be saved? Set this to \code{FALSE} on long time series to save memory.
 #' @param saveForecasts should the individual forecast from each model be saved? Set this to \code{FALSE} on long time series to save memory.
 #' @param verbose should the current progress be printed to the console?
+#' @param num.cores the number of cores to use for parallel fitting. If the underlying model
+#' that is being fit also utilizes parallelization, the number of cores it is using multiplied
+#' by `num.cores` should not exceed the number of cores avaialble on your machine.
 #' @param ... Other arguments to be passed to the model function FUN
 #'
 #' @details Cross validation of time series data is more complicated than regular k-folds or leave-one-out cross validation of datasets
@@ -109,7 +114,8 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  xreg = NULL,
                  saveModels = ifelse(length(x) > 500, FALSE, TRUE),
                  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE),
-                 verbose = TRUE, ...){
+                 verbose = TRUE, num.cores = 1,
+                 ...){
   # Default model function
   # This can be useful for methods that estimate the model and forecasts in one step
   # e.g. GMDH() from the "GMDH" package or thetaf()/meanf()/rwf() from "forecast". In this case,
@@ -158,9 +164,8 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
     } else
       warning("Ignoring xreg parameter since fitting function does not accept xreg")
   }
-  
-  # Combined code for rolling/nonrolling CV
 
+  # Combined code for rolling/nonrolling CV
   results <- matrix(NA,
                     nrow = ifelse(rolling, length(x) - windowSize - maxHorizon + 1, as.integer((length(x) - windowSize) / maxHorizon)),
                     ncol = maxHorizon)
@@ -171,15 +176,22 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   # Perform the cv fits
   # adapted from code from Rob Hyndman at http://robjhyndman.com/hyndsight/tscvexample/
   # licensend under >= GPL2 from the author
-  
-  for (sliceNum in seq_along(slices)) {
+
+  cl <- parallel::makeCluster(num.cores)
+  doParallel::registerDoParallel(cl)
+  on.exit(parallel::stopCluster(cl))
+  # Appease R CMD CHECK with sliceNum declaration
+  sliceNum <- NULL
+  results <- foreach(sliceNum = seq_along(slices),
+                     .packages = "forecastHybrid") %dopar% {
     if(verbose){
       cat("Fitting fold", sliceNum, "of", nrow(results), "\n")
     }
+     results <- list()
 
     trainIndices <- slices[[sliceNum]]$trainIndices
     testIndices <- slices[[sliceNum]]$testIndices
-    
+
     tsTrain <- tsSubsetWithIndices(x, trainIndices)
     tsTest <- tsSubsetWithIndices(x, testIndices)
 
@@ -192,22 +204,30 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
       mod <- do.call(FUN, list(tsTrain, ...))
       fc <- do.call(FCFUN, list(mod, h = maxHorizon))
     }
-    
+
     if(saveModels){
-      fits[[sliceNum]] <- mod
+      results$fits <- mod
     }
 
     if(saveForecasts){
-      forecasts[[sliceNum]] <- fc
+      results$forecasts <- fc
     }
-    
-    results[sliceNum, ] <- tsTest - fc$mean
 
+    #results[sliceNum, ] <- tsTest - fc$mean
+    results$resids <- tsTest - fc$mean
+    results
   }
-  
+
+  # Gather the parallel chunks
+  residlist <- lapply(results, function(x) unlist(x$resids))
+  resids <- matrix(unlist(residlist, use.names = FALSE),
+                   ncol = maxHorizon, byrow = TRUE)
+  forecasts <- lapply(results, function(x) x$forecasts)
+  fits <- lapply(results, function(x) x$fits)
+
   # Average the results from all forecast horizons up to maxHorizon
   if(horizonAverage){
-    results <- as.matrix(rowMeans(results), ncol = 1)
+    resids <- as.matrix(rowMeans(resids), ncol = 1)
   }
 
   if(!saveModels){
@@ -216,7 +236,7 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   if(!saveForecasts){
     forecasts <- NULL
   }
-  
+
   params <- list(FUN = FUN,
                  FCFUN = FCFUN,
                  rolling = rolling,
@@ -226,15 +246,16 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  saveModels = saveModels,
                  saveForecasts = saveForecasts,
                  verbose = verbose,
+                 num.cores = num.cores,
                  extra = list(...))
-  
+
   result <- list(x = x,
                xreg = xreg,
                params = params,
                forecasts = forecasts, 
                models = fits, 
-               residuals = results)
-  
+               residuals = resids)
+
   class(result) <- "cvts"
   return(result)
 }
@@ -314,11 +335,10 @@ extractForecasts <- function(cv, horizon = 1) {
                                    end = time(pointf)[horizon])
          }, 
          cv$forecasts) 
-      
+
       pointf <- Reduce(tsCombine, pointfList)
-      
+
       #Ensure all points in the original series are represented (makes it easy for comparisons)
       template <- replace(cv$x, c(1:length(cv$x)), NA)
       return(tsCombine(pointf, template))
 }
-
