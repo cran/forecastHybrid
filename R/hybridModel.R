@@ -109,28 +109,26 @@ hybridModel <- function(y, models = "aefnst",
                         horizonAverage = FALSE,
                         parallel = FALSE, num.cores = 2L,
                         verbose = TRUE){
-  # Weights could be set to equal (the default), based on in-sample errors, or based on cv errors
-  # errorMethod will determine which type of errors to use for weights. Some choices from accuracy()
-  # are not appropriate. If weights = "equal", this would be ignored.
 
   # The dependent variable must be numeric and not a matrix/dataframe
-  if(!is.numeric(y) || !is.null(dim(y))){
+  forbiddenTypes <- c("data.frame", "data.table", "matrix")
+  if(!is.numeric(y) || all(class(y) %in% forbiddenTypes)){
     stop("The time series must be numeric and may not be a matrix or dataframe object.")
   }
   if(!length(y)){
     stop("The time series must have observations")
   }
 
-   if(length(y) < 4){
-      stop("The time series must have at least four observations")
-   }
+  if(length(y) < 4){
+    stop("The time series must have at least four observations")
+  }
 
   y <- as.ts(y)
 
   # Match arguments to ensure validity
   weights <- match.arg(weights)
   if(weights == "insample.errors"){
-     warning("Using insample.error weights is not recommended for accuracy and may be deprecated in the future.")
+    warning("Using insample.error weights is not recommended for accuracy and may be deprecated in the future.")
   }
   errorMethod <- match.arg(errorMethod)
 
@@ -140,7 +138,8 @@ hybridModel <- function(y, models = "aefnst",
     stop("Invalid models specified.")
   }
   # All characters must be valid
-  if(!(all(expandedModels %in% c("a", "e", "f", "n", "s", "t")))){
+  validModels <- c("a", "e", "f", "n", "s", "t")
+  if(!all(expandedModels %in% validModels)){
     stop("Invalid models specified.")
   }
   if(!length(expandedModels)){
@@ -212,10 +211,7 @@ hybridModel <- function(y, models = "aefnst",
   if(parallel){
     warning("The 'parallel' argument is currently unimplemented. Ignoring for now.")
   }
-  # if(weights == "cv.errors"){
-  #   warning("Cross validated error weights are currently unimplemented. Ignoring for now.")
-  #   weights <- "equal"
-  # }
+
   if(weights == "cv.errors" && errorMethod == "MASE"){
     warning("cv errors currently do not support MASE. Reverting to RMSE.")
     errorMethod <- "RMSE"
@@ -291,16 +287,16 @@ hybridModel <- function(y, models = "aefnst",
 
   # Set the model weights
   includedModels <- names(modelResults)
-  # Weighting methods would go here, equal weighting for now
+  numModels <- length(expandedModels)
   if(weights == "equal"){
-    modelResults$weights <- rep(1 / length(expandedModels), length(expandedModels))
+    modelResults$weights <- rep(1 / numModels, numModels)
   } else if(weights %in% c("insample.errors", "cv.errors")){
 
     # There is probably a better way of accomplishing this
     # But this ugly approach will work for now
     # These loops and if statements can be replace
     # with do.call and/or map
-    modelResults$weights <- rep(0, length(expandedModels))
+    modelResults$weights <- rep(0, numModels)
     index <- 1
     modResults <- modelResults
 
@@ -401,16 +397,40 @@ hybridModel <- function(y, models = "aefnst",
                               nrow = nrow(fits), byrow = TRUE)
   fits <- rowSums(fits * fitsWeightsMatrix)
   resid <- y - fits
+  # If y is a ts, make fits and resid a ts too
   if (!is.null(tsp(y))){
     fits <- ts(fits)
     resid <- ts(fits)
     tsp(fits) <- tsp(resid) <- tsp(y)
   }
 
+  # Save which models used xreg
+  xregs <- list()
+  if("a" %in% expandedModels){
+      xregs$auto.arima <- FALSE
+      if("xreg" %in% names(a.args) && !is.null(a.args$xreg)){
+        xregs$auto.arima <- TRUE
+      }
+  }
+  if("n" %in% expandedModels){
+      xregs$nnetar <- FALSE
+      if("xreg" %in% names(n.args) && !is.null(n.args$xreg)){
+        xregs$nnetar <- TRUE
+      }
+  }
+  if("s" %in% expandedModels){
+      xregs$stlm <- FALSE
+      methodArima <- "method" %in% names(s.args) && s.args$method == "arima"
+      if("xreg" %in% names(s.args) && !is.null(s.args$xreg) && methodArima){
+        xregs$stlm <- TRUE
+      }
+  }
+
   # Prepare the hybridModel object
   class(modelResults) <- "hybridModel"
   modelResults$frequency <- frequency(y)
   modelResults$x <- y
+  modelResults$xreg <- xregs
   modelResults$models <- includedModels
   modelResults$fitted <- fits
   modelResults$residuals <- resid
@@ -533,9 +553,9 @@ accuracy.cvts <- function(f, ...){
   MAE <- colMeans(abs(f$residuals))
   results <- data.frame(ME, RMSE, MAE)
   rownames(results) <- paste("Forecast Horizon ", rownames(results))
-  return(results)
   # MASE TODO
   # Will require actual/fitted/residuals
+  return(results)
 }
 
 
@@ -566,7 +586,6 @@ print.hybridModel <- function(x, ...){
   for(i in x$models){
     cat("############\n")
     cat(i, "with weight", round(x$weights[i], 3), "\n")
-    #cat("############\n")
   }
 }
 
@@ -620,13 +639,13 @@ plot.hybridModel <- function(x,
          }
          names(plotFrame) <- plotModels
          plotFrame$date <- as.Date(time(x$x))
-         # Appease R CMD check for undeclared variable, value
+         # Appease R CMD check for undeclared variable
          variable <- NULL
          value <- NULL
          plotFrame <- reshape2::melt(plotFrame, id = "date")
          ggplot(data = plotFrame, 
                 aes(x = date, y = as.numeric(value), col = variable)) +
-            geom_line() + scale_y_continuous(name = "y")
+                geom_line() + scale_y_continuous(name = "y")
          
       } else{
          # Set the highest and lowest axis scale
@@ -643,7 +662,7 @@ plot.hybridModel <- function(x,
    } else if(type == "models"){
       plotModels <- x$models[x$models != "stlm" & x$models != "nnetar"]
       for(i in seq_along(plotModels)){
-         # tbats isn't supported by autoplot
+         # bats, tbats, and nnetar aren't supported by autoplot
          if(ggplot && !(plotModels[i] %in% c("tbats", "bats", "nnetar"))){
             autoplot(x[[plotModels[i]]])
          } else if(!ggplot){
