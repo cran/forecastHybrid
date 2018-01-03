@@ -183,6 +183,10 @@ hybridModel <- function(y, models = "aefnst",
      warning("frequency(y) >= 24. The Theta model will not be used.")
      expandedModels <- expandedModels[expandedModels != "f"]
   }
+  if(is.element("f", expandedModels) && length(y) <= frequency(y)){
+    warning("The theta model requires more than a year of data. The theta model will not be used.")
+    expandedModels <- expandedModels[expandedModels != "f"]
+  }
 
   if(is.element("s", expandedModels)){
     if(frequency(y) < 2L){
@@ -311,7 +315,7 @@ hybridModel <- function(y, models = "aefnst",
                                         maxHorizon = cvHorizon,
                                         horizonAverage = horizonAverage,
                                         verbose = FALSE,
-                                        windowSize = windowSize)
+                                        windowSize = windowSize, num.cores = num.cores)
         } else if(i == "e"){
           if(verbose){
             cat("Cross validating the ets model\n")
@@ -320,7 +324,7 @@ hybridModel <- function(y, models = "aefnst",
                                  maxHorizon = cvHorizon,
                                  horizonAverage = horizonAverage,
                                  verbose = FALSE,
-                                 windowSize = windowSize)
+                                 windowSize = windowSize, num.cores = num.cores)
         } else if(i == "f"){
            if(verbose){
               cat("Cross validating the thetam model\n")

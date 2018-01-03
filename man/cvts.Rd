@@ -8,7 +8,7 @@ cvts(x, FUN = NULL, FCFUN = NULL, rolling = FALSE, windowSize = 84,
   maxHorizon = 5, horizonAverage = FALSE, xreg = NULL,
   saveModels = ifelse(length(x) > 500, FALSE, TRUE),
   saveForecasts = ifelse(length(x) > 500, FALSE, TRUE), verbose = TRUE,
-  num.cores = 1, ...)
+  num.cores = 2L, extraPackages = NULL, ...)
 }
 \arguments{
 \item{x}{the input time series.}
@@ -42,6 +42,9 @@ metrics for each individual horizon?}
 \item{num.cores}{the number of cores to use for parallel fitting. If the underlying model
 that is being fit also utilizes parallelization, the number of cores it is using multiplied
 by `num.cores` should not exceed the number of cores avaialble on your machine.}
+
+\item{extraPackages}{if a custom `FUN` or `FCFUN` is being used that requires packages to be
+loaded, these can be passed here}
 
 \item{...}{Other arguments to be passed to the model function FUN}
 }
@@ -81,9 +84,17 @@ External regressors are allowed via the \code{xreg} argument. It is assumed that
 If \code{FUN} does not accept the \code{xreg} parameter a warning will be given. No warning is provided if \code{FCFUN} does not use the \code{xreg} parameter.
 }
 \examples{
+series <- subset(AirPassengers, end = 50)
 cvmod1 <- cvts(AirPassengers, FUN = stlm,
-               windowSize = 48, maxHorizon = 12)
+               windowSize = 25, maxHorizon = 12)
 accuracy(cvmod1)
+
+# We can also use custom model functions for modeling/forecasting
+stlmClean <- function(x){stlm(tsclean(x))}
+series <- subset(austres, end = 38)
+cvmodCustom <- cvts(series, FUN = stlmClean, windowSize = 26, maxHorizon = 6)
+accuracy(cvmodCustom)
+
 
 \dontrun{
 cvmod2 <- cvts(USAccDeaths, FUN = ets,
@@ -93,36 +104,13 @@ cvmod2 <- cvts(USAccDeaths, FUN = ets,
 cvmod3 <- cvts(AirPassengers, FUN = hybridModel,
                FCFUN = forecast, rolling = TRUE, windowSize = 48,
                maxHorizon = 12)
-
-# We can also use custom functions, for example fcast()
-from the "GMDH" package
-library(GMDH)
-GMDHForecast <- function(x, h){fcast(x, f.number = h)}
-gmdhcv <- cvts(AirPassengers, FCFUN = GMDHForecast)
-gmdhcv <- cvts(AirPassengers, FCFUN = GMDHForecast)
-
-# Example with custom model function and forecast function
-customMod <- function(x){
- result <- list()
- result$series <- x
- result$last <- tail(x, n = 1)
- class(result) <- "customMod"
- return(result)
 }
-forecast.customMod <- function(x, h = 12){
- result <- list()
- result$model <- x
- result$mean <- rep(x$last, h)
- class(result) <- "forecast"
- return(result)
-}
-cvobj <- cvts(AirPassengers, FUN = customMod, FCFUN = forecast.customMod)
 
 # Use the rwf() function from the "forecast" package.
 # This function does not have a modeling function and
 # instead calculates a forecast on the time series directly
-rwcv <- cvts(AirPassengers, FCFUN = rwf)
-}
+series <- subset(AirPassengers, end = 26)
+rwcv <- cvts(series, FCFUN = rwf, windowSize = 24, maxHorizon = 1)
 
 }
 \seealso{
@@ -130,7 +118,4 @@ rwcv <- cvts(AirPassengers, FCFUN = rwf)
 }
 \author{
 David Shaub
-from doParallel import registerDoParallel
-from parallel import stopCluster
-from foreach import foreach
 }

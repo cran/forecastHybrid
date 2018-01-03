@@ -25,6 +25,8 @@
 #' @param num.cores the number of cores to use for parallel fitting. If the underlying model
 #' that is being fit also utilizes parallelization, the number of cores it is using multiplied
 #' by `num.cores` should not exceed the number of cores avaialble on your machine.
+#' @param extraPackages if a custom `FUN` or `FCFUN` is being used that requires packages to be
+#' loaded, these can be passed here
 #' @param ... Other arguments to be passed to the model function FUN
 #'
 #' @details Cross validation of time series data is more complicated than regular k-folds or leave-one-out cross validation of datasets
@@ -60,9 +62,17 @@
 #' @seealso \code{\link{accuracy.cvts}}
 #'
 #' @examples
+#' series <- subset(AirPassengers, end = 50)
 #' cvmod1 <- cvts(AirPassengers, FUN = stlm,
-#'                windowSize = 48, maxHorizon = 12)
+#'                windowSize = 25, maxHorizon = 12)
 #' accuracy(cvmod1)
+#'
+#' # We can also use custom model functions for modeling/forecasting
+#' stlmClean <- function(x){stlm(tsclean(x))}
+#' series <- subset(austres, end = 38)
+#' cvmodCustom <- cvts(series, FUN = stlmClean, windowSize = 26, maxHorizon = 6)
+#' accuracy(cvmodCustom)
+#'
 #'
 #' \dontrun{
 #' cvmod2 <- cvts(USAccDeaths, FUN = ets,
@@ -72,41 +82,19 @@
 #' cvmod3 <- cvts(AirPassengers, FUN = hybridModel,
 #'                FCFUN = forecast, rolling = TRUE, windowSize = 48,
 #'                maxHorizon = 12)
-#'
-#' # We can also use custom functions, for example fcast()
-#' from the "GMDH" package
-#' library(GMDH)
-#' GMDHForecast <- function(x, h){fcast(x, f.number = h)}
-#' gmdhcv <- cvts(AirPassengers, FCFUN = GMDHForecast)
-#' gmdhcv <- cvts(AirPassengers, FCFUN = GMDHForecast)
-#'
-#' # Example with custom model function and forecast function
-#' customMod <- function(x){
-#'  result <- list()
-#'  result$series <- x
-#'  result$last <- tail(x, n = 1)
-#'  class(result) <- "customMod"
-#'  return(result)
 #' }
-#' forecast.customMod <- function(x, h = 12){
-#'  result <- list()
-#'  result$model <- x
-#'  result$mean <- rep(x$last, h)
-#'  class(result) <- "forecast"
-#'  return(result)
-#' }
-#' cvobj <- cvts(AirPassengers, FUN = customMod, FCFUN = forecast.customMod)
 #'
 #' # Use the rwf() function from the "forecast" package.
 #' # This function does not have a modeling function and
 #' # instead calculates a forecast on the time series directly
-#' rwcv <- cvts(AirPassengers, FCFUN = rwf)
-#' }
+#' series <- subset(AirPassengers, end = 26)
+#' rwcv <- cvts(series, FCFUN = rwf, windowSize = 24, maxHorizon = 1)
 #'
 #' @author David Shaub
-#' from doParallel import registerDoParallel
-#' from parallel import stopCluster
-#' from foreach import foreach
+#' @importFrom utils getAnywhere
+#' @importFrom doParallel registerDoParallel
+#' @importFrom parallel stopCluster
+#' @importFrom foreach foreach
 cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  rolling = FALSE, windowSize = 84,
                  maxHorizon = 5,
@@ -114,22 +102,39 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  xreg = NULL,
                  saveModels = ifelse(length(x) > 500, FALSE, TRUE),
                  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE),
-                 verbose = TRUE, num.cores = 1,
+                 verbose = TRUE, num.cores = 2L, extraPackages = NULL,
                  ...){
   # Default model function
   # This can be useful for methods that estimate the model and forecasts in one step
   # e.g. GMDH() from the "GMDH" package or thetaf()/meanf()/rwf() from "forecast". In this case,
-  # no model function is entered but the forecast function is entered for
-  # FCFUN
+  # no model function is used but the forecast function is applied in FCFUN
   if(is.null(FUN)){
     FUN <- function(x){
       return(x)
     }
   }
+  # Determine which packages will need to be sent to the parallel workers
+  excludePackages <- c("", "R_GlobalEnv")
+  includePackages <- "forecast"
+  funPackage <- environmentName(environment(FUN))
+  if(!is.element(funPackage, excludePackages)){
+    includePackages <- c(includePackages, funPackage)
+  }
+
   # Default forecast function
   if(is.null(FCFUN)){
     FCFUN <- forecast
   }
+  # Determine which packages will need to be sent to the parallel workers
+  fcfunPackage <- environmentName(environment(FCFUN))
+  if(!is.element(fcfunPackage, excludePackages)){
+    includePackages <- c(includePackages, fcfunPackage)
+  }
+  if(!is.null(extraPackages)){
+    includePackages <- c(includePackages, extraPackages)
+  }
+  includePackages <- unique(includePackages)
+
   f = frequency(x)
   tspx <- tsp(x)
   if(is.null(tspx)){
@@ -167,9 +172,9 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   # Combined code for rolling/nonrolling CV
   nrow = ifelse(rolling, length(x) - windowSize - maxHorizon + 1,
                 as.integer((length(x) - windowSize) / maxHorizon))
-  results <- matrix(NA, nrow = nrow, ncol = maxHorizon)
+  resultsMat <- matrix(NA, nrow = nrow, ncol = maxHorizon)
 
-  forecasts <- fits <- vector("list", nrow(results))
+  forecasts <- fits <- vector("list", nrow(resultsMat))
   slices <- tsPartition(x, rolling, windowSize, maxHorizon)
 
   # Perform the cv fits
@@ -182,9 +187,9 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   # Appease R CMD CHECK with sliceNum declaration
   sliceNum <- NULL
   results <- foreach::foreach(sliceNum = seq_along(slices),
-                              .packages = c("forecastHybrid", "forecast")) %dopar% {
+                              .packages = includePackages) %dopar% {
     if(verbose){
-      cat("Fitting fold", sliceNum, "of", nrow(results), "\n")
+      cat("Fitting fold", sliceNum, "of", nrow(resultsMat), "\n")
     }
     results <- list()
 
@@ -274,9 +279,8 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
 #' 
 #' @author Ganesh Krishnan
 #' @examples 
-#' \dontrun{
 #' tsPartition(AirPassengers, rolling = TRUE, windowSize = 10, maxHorizon = 2)
-#' }
+#'
 
 tsPartition <- function(x, rolling, windowSize, maxHorizon) {
   numPartitions <- ifelse(rolling, length(x) - windowSize - maxHorizon + 1, as.integer((length(x) - windowSize) / maxHorizon))
@@ -318,20 +322,19 @@ tsPartition <- function(x, rolling, windowSize, maxHorizon) {
 #' 
 #' @author Ganesh Krishnan
 #' @examples 
-#' \dontrun{
-#' cv <- cvts(AirPassengers, FUN = "ets", FCFUN = "forecast", 
-#'         rolling = TRUE, windowSize = 12, horizon = 2)
+#' cv <- cvts(AirPassengers, FUN = stlm, FCFUN = forecast,
+#'         rolling = TRUE, windowSize = 134, horizon = 2)
 #' 
-#' extractRollingForecasts(cv)
-#' }
+#' extractForecasts(cv)
+#'
 extractForecasts <- function(cv, horizon = 1) {
       if (horizon > cv$params$maxHorizon) 
          stop("Cannot extract forecasts with a horizon greater than the model maxHorizon")
       pointfList <- Map(function(fcast) {
          pointf <- fcast$mean
          window(pointf, start = time(pointf)[horizon], 
-                                   end = time(pointf)[horizon])
-         }, 
+                end = time(pointf)[horizon])
+         },
          cv$forecasts) 
 
       pointf <- Reduce(tsCombine, pointfList)
