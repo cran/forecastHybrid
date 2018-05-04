@@ -175,16 +175,12 @@ hybridModel <- function(y, models = "aefnst",
   }
 
   # Check for problems for specific models (e.g. long seasonality for ets and non-seasonal for stlm or nnetar)
-  if(is.element("e", expandedModels) && frequency(y) >=24){
-    warning("frequency(y) >= 24. The ets model will not be used.")
+  if(is.element("e", expandedModels) && frequency(y) > 24){
+    warning("frequency(y) > 24. The ets model will not be used.")
     expandedModels <- expandedModels[expandedModels != "e"]
   }
-  if(is.element("f", expandedModels) && frequency(y) >=24){
-     warning("frequency(y) >= 24. The Theta model will not be used.")
-     expandedModels <- expandedModels[expandedModels != "f"]
-  }
   if(is.element("f", expandedModels) && length(y) <= frequency(y)){
-    warning("The theta model requires more than a year of data. The theta model will not be used.")
+    warning("The theta model requires more than one seasonal period of data. The theta model will not be used.")
     expandedModels <- expandedModels[expandedModels != "f"]
   }
 
@@ -649,19 +645,27 @@ plot.hybridModel <- function(x,
    plotModels <- x$models
    if(type == "fit"){
       if(ggplot){
-         plotFrame <- data.frame(matrix(0, nrow = length(x$x), ncol = 0))
-         for(i in plotModels){
-            plotFrame[i] <- fitted(x[[i]])
-         }
-         names(plotFrame) <- plotModels
-         plotFrame$date <- as.Date(time(x$x))
-         # Appease R CMD check for undeclared variable
-         variable <- NULL
-         value <- NULL
-         plotFrame <- reshape2::melt(plotFrame, id = "date")
-         ggplot(data = plotFrame, 
-                aes(x = date, y = as.numeric(value), col = variable)) +
-                geom_line() + scale_y_continuous(name = "y")
+        plotFrame <- data.frame(matrix(0, nrow = length(x$x), ncol = 0))
+        for(i in plotModels){
+          plotFrame[i] <- fitted(x[[i]])
+        }
+        names(plotFrame) <- plotModels
+        plotFrame$date <- as.Date(time(x$x))
+        # Appease R CMD check for undeclared variable
+        variable <- NULL
+        value <- NULL
+        # If anyone knows a cleaner way to transform this "wide" data to "long" data for plotting
+        # with ggplot2 without using additional packages, let me know.
+        pf <- matrix(as.matrix(plotFrame[, plotModels]), ncol = 1)
+        pf <- data.frame(date = plotFrame$date,
+                         variable = factor(rep(plotModels,
+                                               each = nrow(plotFrame)),
+                                           levels = plotModels),
+                         value = pf)
+        plotFrame <- pf[order(pf$variable, pf$date), ]
+        ggplot(data = plotFrame,
+               aes(x = date, y = as.numeric(value), col = variable)) +
+        geom_line() + scale_y_continuous(name = "y")
          
       } else{
          # Set the highest and lowest axis scale
