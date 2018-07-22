@@ -1,6 +1,15 @@
+# Version 3.0.14 [2018-07-22]
+* Parallel support added to `hybridModel()`. This can be controlled by setting `parallel = TRUE` and setting `num.cores`. By default this is not enabled since the performance improvement typically only occurs when fitting `auto.arima` and `tbats` models on long series with large frequency (e.g. `taylor`).
+* Added `z.args` for the `snaive()` model.
+* The `tbats()` and `snaive()` models now respect and use `lambda` when passed in `t.args` and `z.args`.
+* Refactored code to remove code duplication and cleaned up the hybridModel file by moving code into helper and generic files.
+* Weights and cross validation for the `snaive` model are now handled correctly.
+* Project is now hosted on [GitLab](https://gitlab.com/dashaub/forecastHybrid) as well as [GitHub](https://github.com/ellisp/forecastHybrid). Pull requests can be submitted to either platform, and branches should sync to Gitlab automatically every hour.
+* Commits and tags are now signed with RSA key 09183768E3BC25497F9060C701B81BAF17A89621. The public key is located in the package archive root directory in `davidshaub@gmx.com.key` and hosted on both GitHub and GitLab in `pkg/davidshaub@gmx.com.key`.
+
 # Version 2.2.12 [2018-05-04]
 * Added `PI.combination` argument to `forecast.hybridModel()`. The default behavior is to follow the existing methodology of using the most extreme prediction intervals from the component models. When `"mean"` is passed instead, a simple (unweighted) average of the component prediction intervals is used instead.
-* The theta model included in an ensemble can nowhandle seasonality with frequency >= 24.
+* The theta model included in an ensemble can now handle seasonality with frequency >= 24.
 * The ets model can now be included for hourly data.
 * The "reshape2" package is no longer imported.
 
