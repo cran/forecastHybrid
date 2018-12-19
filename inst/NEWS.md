@@ -1,3 +1,14 @@
+# Version 4.1.16 [2018-12-19]
+* Use forking instead of a socket cluster for parallel execution on UNIX-like systems for `cvts()`. This results in significantly faster execution and less memory usage, particularly when the `FUN` and `FCFUN` functions are very quick (e.g. `snaive()`, `rwf()`, `stlm()`), the time series is short, few cores are used, or few CV folds run.
+* Faster `cvts()` examples.
+* More tests for `cvts()`.
+* Fix spelling errors.
+
+# Version 4.0.15 [2018-12-17]
+* The `xreg` argument passed in should now be a matrix instead of a dataframe for consistency with "forecast" v8.5.
+* Fix messy function call in #27. This results in `hybridModel` objects that use far less memory and that print more cleanly to the console. For example, previously `hm <- hybridModel(wineind); format(object.size(hm), units = "auto")` produced a 5.8 Mb object but now it is only 314.8 Kb.
+* Adds "purrr" to imports.
+
 # Version 3.0.14 [2018-07-22]
 * Parallel support added to `hybridModel()`. This can be controlled by setting `parallel = TRUE` and setting `num.cores`. By default this is not enabled since the performance improvement typically only occurs when fitting `auto.arima` and `tbats` models on long series with large frequency (e.g. `taylor`).
 * Added `z.args` for the `snaive()` model.
@@ -5,7 +16,7 @@
 * Refactored code to remove code duplication and cleaned up the hybridModel file by moving code into helper and generic files.
 * Weights and cross validation for the `snaive` model are now handled correctly.
 * Project is now hosted on [GitLab](https://gitlab.com/dashaub/forecastHybrid) as well as [GitHub](https://github.com/ellisp/forecastHybrid). Pull requests can be submitted to either platform, and branches should sync to Gitlab automatically every hour.
-* Commits and tags are now signed with RSA key 09183768E3BC25497F9060C701B81BAF17A89621. The public key is located in the package archive root directory in `davidshaub@gmx.com.key` and hosted on both GitHub and GitLab in `pkg/davidshaub@gmx.com.key`.
+* Commits and tags are now signed with RSA key 09183768E3BC25497F9060C701B81BAF17A89621. The public key is located in the package archive root directory in `inst/davidshaub@gmx.com.key` and hosted on both GitHub and GitLab in `pkg/inst/davidshaub@gmx.com.key`.
 
 # Version 2.2.12 [2018-05-04]
 * Added `PI.combination` argument to `forecast.hybridModel()`. The default behavior is to follow the existing methodology of using the most extreme prediction intervals from the component models. When `"mean"` is passed instead, a simple (unweighted) average of the component prediction intervals is used instead.
@@ -63,7 +74,7 @@ the number of cores used by each model multiplied by `num.cores` passed to
 * Fixed an error where e.args was passed to tbats instead of t.args
 
 # Version 0.2.0 [2016-09-23]
-* Add timeseries cross validation with `cvts()`
+* Add time series cross validation with `cvts()`
 * Add support for `weights = "cv.errors"` in `hybridModel()`
 * Fix model weights when `weights = "insample.errors"` and one or more component models perfectly fit the time series
 * Fixed erroneous warning message when `xreg` is included in `n.args` but a `nnetar` model is not included in the model list

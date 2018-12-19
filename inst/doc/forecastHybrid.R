@@ -97,12 +97,12 @@ hm5$stlm$lambda
 
 
 ## ----xreg, cache = TRUE--------------------------------------------------
-# Use the beaver1 dataset with the variable "activ" as a covariate and "temp" as the timeseries
+# Use the beaver1 dataset with the variable "activ" as a covariate and "temp" as the time series
 # Divice this into a train and test set
 trainSet <- beaver1[1:100, ] 
 testSet <- beaver1[-(1:100), ]
-trainXreg <- data.frame(trainSet$activ)
-testXreg <- data.frame(testSet$activ)
+trainXreg <- matrix(trainSet$activ)
+testXreg <- matrix(testSet$activ)
 
 # Create the model
 beaverhm <- hybridModel(ts(trainSet$temp, f = 6),

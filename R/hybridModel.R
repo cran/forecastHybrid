@@ -1,4 +1,4 @@
-#' Hybrid time series modelling
+#' Hybrid time series modeling
 #'
 #' Create a hybrid time series model with two to five component models.
 #'
@@ -34,7 +34,7 @@
 #' and mean absolute scaled error (\code{MASE})
 #' are supported.
 #' @param parallel a boolean indicating if parallel processing should be used between models.
-#' Parallelization will still occur within individual models that suport it and can be controlled using \code{a.args} and \code{t.args}.
+#' Parallelization will still occur within individual models that support it and can be controlled using \code{a.args} and \code{t.args}.
 #' @param num.cores If \code{parallel=TRUE}, how many cores to use.
 #' @param cvHorizon If \code{weights = "cv.errors"}, this controls which forecast to horizon to use
 #' for the error calculations.
@@ -54,14 +54,14 @@
 #' in most cases, fine control can be exerted by passing detailed arguments to the component models in the
 #' \code{a.args}, \code{e.args}, \code{n.args}, \code{s.args}, and \code{t.args} lists.
 #' Note that if \code{xreg} is passed to the \code{a.args}, \code{n.args}, or \code{s.args} component models
-#' it must be passed as a dataframe instead of the matrix object
-#' that the "forecast" package functions usually accept.
-#' This is due to a limitation in how the component models are called.
+#' it must now be passed as a matrix. In "forecastHybrid" versions earlier than 4.0.15 it would
+#' instead be passed in as a dataframe, but for consistency with "forecast" v8.5 we now require
+#' a matrix with colnames
 #' \cr
 #' \cr
-#' Characteristics of the input series can cause problems for certain types of models and paramesters.
+#' Characteristics of the input series can cause problems for certain types of models and parameters.
 #' For example, \code{\link[forecast]{stlm}} models require that the input series be seasonal;
-#' furthemore, the data must include at least two seasons of data (i.e. \code{length(y) >= 2 * frequency(y)})
+#' furthermore, the data must include at least two seasons of data (i.e. \code{length(y) >= 2 * frequency(y)})
 #' for the decomposition to succeed.
 #' If this is not the case, \code{hybridModel()}
 #' will remove the \code{stlm} model so an error does not occur.
@@ -158,19 +158,20 @@ hybridModel <- function(y, models = "aefnst",
     # Parallel processing won't be used by default since the benefit only occurs on long series
     # with large frequency
     currentModel <- NULL
-    fitModels <- foreach::foreach(currentModel = expandedModels,
+    fitModels <- foreach::foreach(modelCode = expandedModels,
                                   .packages = c("forecast", "forecastHybrid")) %dopar% {
       # thetam() currently does not handle arguments
-      if(currentModel == "f"){
+      if(modelCode == "f"){
          fitModel <- thetam(y)
       } else{ # All other models handle lambda and additional arguments
-        argsAdditional <- modelArguments[[currentModel]]
+        argsAdditional <- modelArguments[[modelCode]]
         if(is.null(argsAdditional)){
           argsAdditional <- list(lambda = lambda)
         } else if(is.null(argsAdditional$lambda)){
           argsAdditional$lambda <- lambda
         }
-        fitModel <- do.call(getModel(currentModel), c(list(y), argsAdditional))
+        currentModel <- purrr::partial(getModel(modelCode), y = y)
+        fitModel <- do.call(currentModel, argsAdditional)
       }
       fitModel
     }
@@ -192,7 +193,8 @@ hybridModel <- function(y, models = "aefnst",
         } else if(is.null(argsAdditional$lambda)){
           argsAdditional$lambda <- lambda
         }
-        modelResults[[modelName]] <- do.call(getModel(modelCode), c(list(y = y), argsAdditional))
+        currentModel <- purrr::partial(getModel(modelCode), y = y)
+        modelResults[[modelName]] <- do.call(currentModel, argsAdditional)
       }
     }
   }

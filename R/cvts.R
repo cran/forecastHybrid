@@ -9,7 +9,7 @@
 #' @param FUN the model function used. Custom functions are allowed. See details and examples.
 #' @param FCFUN a function that process point forecasts for the model function. This defaults to \code{\link{forecast}}. Custom functions are allowed. See details and examples.
 #' See details.
-#' @param rolling should a rolling procedure be used? If TRUE, nonoverlapping windows of size \code{maxHorizon}
+#' @param rolling should a rolling procedure be used? If TRUE, non-overlapping windows of size \code{maxHorizon}
 #' will be used for fitting each model. If FALSE, the size of the dataset used for training will grow
 #' by one each iteration.
 #' @param windowSize length of the window to build each model. When \code{rolling == FALSE}, the each model will be
@@ -24,9 +24,9 @@
 #' @param verbose should the current progress be printed to the console?
 #' @param num.cores the number of cores to use for parallel fitting. If the underlying model
 #' that is being fit also utilizes parallelization, the number of cores it is using multiplied
-#' by `num.cores` should not exceed the number of cores avaialble on your machine.
-#' @param extraPackages if a custom `FUN` or `FCFUN` is being used that requires packages to be
-#' loaded, these can be passed here
+#' by `num.cores` should not exceed the number of cores available on your machine.
+#' @param extraPackages on Windows if a custom `FUN` or `FCFUN` is being used that requires packages to be
+#' loaded, these can be passed here so that they can be passed to parallel socket workers
 #' @param ... Other arguments to be passed to the model function FUN
 #'
 #' @details Cross validation of time series data is more complicated than regular k-folds or leave-one-out cross validation of datasets
@@ -37,7 +37,7 @@
 #' after each iteration.
 #'
 #' For the rolling approach, training points are heavily recycled, both in terms of used for fitting
-#' and in generating forecast errors at each of the forecast horizons from \code{1:maxHorizon}. In constrast, the models fit with
+#' and in generating forecast errors at each of the forecast horizons from \code{1:maxHorizon}. In contrast, the models fit with
 #' the non-rolling approach share less overlap, and the predicted forecast values are also only compared to the actual values once.
 #' The former approach is similar to leave-one-out cross validation while the latter resembles k-fold cross validation. As a result,
 #' rolling cross validation requires far more iterations and computationally takes longer to complete, but a disadvantage of the
@@ -63,7 +63,7 @@
 #'
 #' @examples
 #' series <- subset(AirPassengers, end = 50)
-#' cvmod1 <- cvts(AirPassengers, FUN = stlm,
+#' cvmod1 <- cvts(series, FUN = snaive,
 #'                windowSize = 25, maxHorizon = 12)
 #' accuracy(cvmod1)
 #'
@@ -73,22 +73,24 @@
 #' cvmodCustom <- cvts(series, FUN = stlmClean, windowSize = 26, maxHorizon = 6)
 #' accuracy(cvmodCustom)
 #'
+#' # Use the rwf() function from the "forecast" package.
+#' # This function does not have a modeling function and
+#' # instead calculates a forecast on the time series directly
+#' series <- subset(AirPassengers, end = 26)
+#' rwcv <- cvts(series, FCFUN = rwf, windowSize = 24, maxHorizon = 1)
 #'
 #' \dontrun{
 #' cvmod2 <- cvts(USAccDeaths, FUN = ets,
 #'                saveModels = FALSE, saveForecasts = FALSE,
 #'                windowSize = 36, maxHorizon = 12)
 #'
+#' # If we don't need prediction intervals and are using the nnetar model, turning off PI
+#' # will make the forecasting much faster
 #' cvmod3 <- cvts(AirPassengers, FUN = hybridModel,
-#'                FCFUN = forecast, rolling = TRUE, windowSize = 48,
+#'                FCFUN = function(mod, h) forecast(mod, h = h, PI=FALSE),
+#'                rolling = FALSE, windowSize = 48,
 #'                maxHorizon = 12)
 #' }
-#'
-#' # Use the rwf() function from the "forecast" package.
-#' # This function does not have a modeling function and
-#' # instead calculates a forecast on the time series directly
-#' series <- subset(AirPassengers, end = 26)
-#' rwcv <- cvts(series, FCFUN = rwf, windowSize = 24, maxHorizon = 1)
 #'
 #' @author David Shaub
 #' @importFrom utils getAnywhere
@@ -104,36 +106,21 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE),
                  verbose = TRUE, num.cores = 2L, extraPackages = NULL,
                  ...){
+
+
+  ##################################################################################################
+  # Parse and validate args
+  ##################################################################################################
+
+
   # Default model function
   # This can be useful for methods that estimate the model and forecasts in one step
   # e.g. GMDH() from the "GMDH" package or thetaf()/meanf()/rwf() from "forecast". In this case,
   # no model function is used but the forecast function is applied in FCFUN
-  if(is.null(FUN)){
-    FUN <- function(x){
-      return(x)
-    }
-  }
-  # Determine which packages will need to be sent to the parallel workers
-  excludePackages <- c("", "R_GlobalEnv")
-  includePackages <- "forecast"
-  funPackage <- environmentName(environment(FUN))
-  if(!is.element(funPackage, excludePackages)){
-    includePackages <- c(includePackages, funPackage)
-  }
+  FUN <- ifelse(is.null(FUN), function(x) x, FUN)
 
   # Default forecast function
-  if(is.null(FCFUN)){
-    FCFUN <- forecast
-  }
-  # Determine which packages will need to be sent to the parallel workers
-  fcfunPackage <- environmentName(environment(FCFUN))
-  if(!is.element(fcfunPackage, excludePackages)){
-    includePackages <- c(includePackages, fcfunPackage)
-  }
-  if(!is.null(extraPackages)){
-    includePackages <- c(includePackages, extraPackages)
-  }
-  includePackages <- unique(includePackages)
+  FCFUN <- ifelse(is.null(FCFUN), forecast, FCFUN)
 
   f = frequency(x)
   tspx <- tsp(x)
@@ -160,14 +147,48 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
 
   # Check if fitting function accepts xreg when xreg is not NULL
   xregUse <- FALSE
-  if (!is.null(xreg)) {
+  if(!is.null(xreg)){
     fitArgs <- formals(FUN)
-    if (any(grepl("xreg", names(fitArgs)))) {
+    if(any(grepl("xreg", names(fitArgs)))){
       xregUse <- TRUE
       xreg <- as.matrix(xreg)
     } else
       warning("Ignoring xreg parameter since fitting function does not accept xreg")
   }
+
+
+  ##################################################################################################
+  # Setup parallel
+  ##################################################################################################
+
+
+  if(.Platform$OS.type == "unix"){
+    cl <- parallel::makeForkCluster(num.cores)
+    includePackages <- NULL
+  } else {
+    cl <- parallel::makeCluster(num.cores)
+    # Someone with more Windows experience might know a better way of doing all this
+    # Determine which packages will need to be sent to the parallel workers
+    excludePackages <- c("", "R_GlobalEnv")
+    includePackages <- "forecast"
+    funPackage <- environmentName(environment(FUN))
+    if(!is.element(funPackage, excludePackages)){
+      includePackages <- c(includePackages, funPackage)
+    }
+
+    # Determine which packages will need to be sent to the parallel workers
+    fcfunPackage <- environmentName(environment(FCFUN))
+    if(!is.element(fcfunPackage, excludePackages)){
+      includePackages <- c(includePackages, fcfunPackage)
+    }
+    if(!is.null(extraPackages)){
+      includePackages <- c(includePackages, extraPackages)
+    }
+    includePackages <- unique(includePackages)
+  }
+
+  doParallel::registerDoParallel(cl)
+  on.exit(parallel::stopCluster(cl))
 
   # Combined code for rolling/nonrolling CV
   nrow = ifelse(rolling, length(x) - windowSize - maxHorizon + 1,
@@ -177,19 +198,22 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
   forecasts <- fits <- vector("list", nrow(resultsMat))
   slices <- tsPartition(x, rolling, windowSize, maxHorizon)
 
+
+  ##################################################################################################
+  # Run parallel CV
+  ##################################################################################################
+
+
   # Perform the cv fits
   # adapted from code from Rob Hyndman at http://robjhyndman.com/hyndsight/tscvexample/
   # licensend under >= GPL2 from the author
 
-  cl <- parallel::makeCluster(num.cores)
-  doParallel::registerDoParallel(cl)
-  on.exit(parallel::stopCluster(cl))
   # Appease R CMD CHECK with sliceNum declaration
   sliceNum <- NULL
   results <- foreach::foreach(sliceNum = seq_along(slices),
                               .packages = includePackages) %dopar% {
     if(verbose){
-      cat("Fitting fold", sliceNum, "of", nrow(resultsMat), "\n")
+      message("Fitting fold", sliceNum, "of", nrow(resultsMat), "\n")
     }
     results <- list()
 
@@ -253,11 +277,11 @@ cvts <- function(x, FUN = NULL, FCFUN = NULL,
                  extra = list(...))
 
   result <- list(x = x,
-               xreg = xreg,
-               params = params,
-               forecasts = forecasts, 
-               models = fits, 
-               residuals = resids)
+                 xreg = xreg,
+                 params = params,
+                 forecasts = forecasts, 
+                 models = fits, 
+                 residuals = resids)
 
   class(result) <- "cvts"
   return(result)
