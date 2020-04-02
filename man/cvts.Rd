@@ -4,11 +4,22 @@
 \alias{cvts}
 \title{Cross validation for time series}
 \usage{
-cvts(x, FUN = NULL, FCFUN = NULL, rolling = FALSE, windowSize = 84,
-  maxHorizon = 5, horizonAverage = FALSE, xreg = NULL,
+cvts(
+  x,
+  FUN = NULL,
+  FCFUN = NULL,
+  rolling = FALSE,
+  windowSize = 84,
+  maxHorizon = 5,
+  horizonAverage = FALSE,
+  xreg = NULL,
   saveModels = ifelse(length(x) > 500, FALSE, TRUE),
-  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE), verbose = TRUE,
-  num.cores = 2L, extraPackages = NULL, ...)
+  saveForecasts = ifelse(length(x) > 500, FALSE, TRUE),
+  verbose = TRUE,
+  num.cores = 2L,
+  extraPackages = NULL,
+  ...
+)
 }
 \arguments{
 \item{x}{the input time series.}
@@ -95,25 +106,26 @@ series <- subset(austres, end = 38)
 cvmodCustom <- cvts(series, FUN = stlmClean, windowSize = 26, maxHorizon = 6)
 accuracy(cvmodCustom)
 
+\donttest{
 # Use the rwf() function from the "forecast" package.
 # This function does not have a modeling function and
 # instead calculates a forecast on the time series directly
 series <- subset(AirPassengers, end = 26)
 rwcv <- cvts(series, FCFUN = rwf, windowSize = 24, maxHorizon = 1)
 
-\dontrun{
-cvmod2 <- cvts(USAccDeaths, FUN = ets,
+# Don't return the model or forecast objects
+cvmod2 <- cvts(USAccDeaths, FUN = stlm,
                saveModels = FALSE, saveForecasts = FALSE,
                windowSize = 36, maxHorizon = 12)
 
 # If we don't need prediction intervals and are using the nnetar model, turning off PI
 # will make the forecasting much faster
-cvmod3 <- cvts(AirPassengers, FUN = hybridModel,
-               FCFUN = function(mod, h) forecast(mod, h = h, PI=FALSE),
-               rolling = FALSE, windowSize = 48,
-               maxHorizon = 12)
+series <- subset(AirPassengers, end=40)
+cvmod3 <- cvts(series, FUN = hybridModel,
+               FCFUN = function(mod, h) forecast(mod, h = h, PI = FALSE),
+               rolling = FALSE, windowSize = 36,
+               maxHorizon = 2)
 }
-
 }
 \seealso{
 \code{\link{accuracy.cvts}}
