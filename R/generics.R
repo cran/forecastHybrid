@@ -6,7 +6,7 @@
 #' @param x the input object.
 #' @return A boolean indicating if the object is a \code{hybridModel} is returned.
 #'
-is.hybridModel <- function(x){
+is.hybridModel <- function(x) { # nolint
   inherits(x, "hybridModel")
 }
 
@@ -24,11 +24,11 @@ is.hybridModel <- function(x){
 #'
 fitted.hybridModel <- function(object,
                                individual = FALSE,
-                               ...){
-  #chkDots(...)
-  if(individual){
+                               ...) {
+  chkDots(...)
+  if (individual) {
     results <- list()
-    for(model in object$models){
+    for (model in object$models) {
       results[[model]] <- fitted(object[[model]])
     }
     return(results)
@@ -49,11 +49,11 @@ fitted.hybridModel <- function(object,
 #'
 residuals.hybridModel <- function(object,
                                   individual = FALSE,
-                                  ...){
-  #chkDots(...)
-  if(individual){
+                                  ...) {
+  chkDots(...)
+  if (individual) {
     results <- list()
-    for(model in object$models){
+    for (model in object$models) {
       results[[model]] <- residuals(object[[model]])
     }
     return(results)
@@ -80,18 +80,19 @@ residuals.hybridModel <- function(object,
 #'
 #' @author David Shaub
 #'
-accuracy.hybridModel <- function(object,
+accuracy.hybridModel <- function(object, # nolint
                                  individual = FALSE,
                                  ...,
-                                 f = NULL){
-  if(!is.null(f)){
-    warning("Using `f` as the argument for `accuracy()` is deprecated. Please use `object` instead.")
+                                 f = NULL) {
+  chkDots(...)
+  if (!is.null(f)) {
+    warning("Using `f` as the argument for `accuracy()` is deprecated.",
+            "Please use `object` instead.")
     object <- f
   }
-  #chkDots(...)
-  if(individual){
+  if (individual) {
     results <- list()
-    for(model in object$models){
+    for (model in object$models) {
       results[[model]] <- forecast::accuracy(object[[model]])
     }
     return(results)
@@ -109,21 +110,25 @@ accuracy.hybridModel <- function(object,
 #' @param ... other arguments (ignored).
 #'
 #' @details
-#' Currently the method only implements \code{ME}, \code{RMSE}, and \code{MAE}. The accuracy measures
-#' \code{MPE}, \code{MAPE}, and \code{MASE} are not calculated. The accuracy is calculated for each
-#' forecast horizon up to \code{maxHorizon}
+#' Currently the method only implements \code{ME}, \code{RMSE}, and \code{MAE}. The accuracy
+#' measures \code{MPE}, \code{MAPE}, and \code{MASE} are not calculated. The accuracy
+#' is calculated for each forecast horizon up to \code{maxHorizon}
 #' @export
 #' @author David Shaub
-#' 
-accuracy.cvts <- function(object, ..., f = NULL){
-  if(!is.null(f)){
-    warning("Using `f` as the argument for `accuracy()` is deprecated. Please use `object` instead.")
+#'
+accuracy.cvts <- function(object, # nolint
+                          ...,
+                          f = NULL) {
+  chkDots(...)
+  if (!is.null(f)) {
+    warning("Using `f` as the argument for `accuracy()` is deprecated.",
+            " Please use `object` instead.")
     object <- f
   }
-  ME <- colMeans(object$residuals)
-  RMSE <- apply(object$residuals, MARGIN = 2,
-                FUN = function(x){sqrt(sum(x ^ 2)/ length(x))})
-  MAE <- colMeans(abs(object$residuals))
+  ME <- colMeans(object$residuals) # nolint
+  RMSE <- apply(object$residuals, MARGIN = 2, # nolint
+                FUN = function(x) sqrt(sum(x ^ 2) / length(x)))
+  MAE <- colMeans(abs(object$residuals)) # nolint
   results <- data.frame(ME, RMSE, MAE)
   rownames(results) <- paste("Forecast Horizon ", rownames(results))
   # MASE TODO
@@ -138,7 +143,7 @@ accuracy.cvts <- function(object, ..., f = NULL){
 #' @details Print the names of the individual component models and their weights.
 #'
 #'
-summary.hybridModel <- function(x){
+summary.hybridModel <- function(x) {
   print(x)
 }
 
@@ -151,17 +156,88 @@ summary.hybridModel <- function(x){
 #' @export
 #' @details Print the names of the individual component models and their weights.
 #'
-print.hybridModel <- function(x, ...){
-  #chkDots(...)
+print.hybridModel <- function(x,
+                              ...) {
+  chkDots(...)
   cat("Hybrid forecast model comprised of the following models: ")
   cat(x$models, sep = ", ")
   cat("\n")
-  for(model in x$models){
+  for (model in x$models) {
     cat("############\n")
     cat(model, "with weight", round(x$weights[model], 3), "\n")
   }
 }
 
+#' Plot the component models of a hybridModel object
+#'
+#' Plot a representation of the hybridModel.
+#' @param x an object of class hybridModel to plot.
+#' @param ggplot should the \code{\link{autoplot}} function be used (when available) for the plots?
+#' @param ... other arguments passed to \link{plot}.
+#' @importFrom ggplot2 autoplot ggplot
+plotModelObjects <- function(x,
+                             ggplot,
+                             ...) {
+  chkDots(...)
+  plotModels <- x$models[x$models != "stlm" & x$models != "nnetar"]
+  for (i in seq_along(plotModels)) {
+     # bats, tbats, and nnetar aren't supported by autoplot
+     if (ggplot && !(plotModels[i] %in% c("tbats", "bats", "nnetar"))) {
+        autoplot(x[[plotModels[i]]])
+     } else if (!ggplot) {
+        plot(x[[plotModels[i]]])
+     }
+  }
+}
+
+#' Plot the fitted values of a hybridModel object
+#'
+#' Plot a fitted values of the hybridModel.
+#' @param x an object of class hybridModel to plot.
+#' @param ggplot should the \code{\link{autoplot}} function be used (when available) for the plots?
+#' @param ... other arguments passed to \link{plot}.
+#' @importFrom ggplot2 ggplot aes geom_line scale_y_continuous
+plotFitted <- function(x,
+                       ggplot,
+                       ...) {
+  chkDots(...)
+  plotModels <- x$models
+  if (ggplot) {
+    plotFrame <- data.frame(matrix(0, nrow = length(x$x), ncol = 0))
+    for (i in plotModels) {
+      plotFrame[i] <- fitted(x[[i]])
+    }
+    names(plotFrame) <- plotModels
+    plotFrame$date <- as.Date(time(x$x))
+    # Appease R CMD check for undeclared variable
+    variable <- NULL
+    value <- NULL
+    # If anyone knows a cleaner way to transform this "wide" data to "long" data for plotting
+    # with ggplot2 without using additional packages, let me know.
+    pf <- matrix(as.matrix(plotFrame[, plotModels]), ncol = 1)
+    pf <- data.frame(date = plotFrame$date,
+                     variable = factor(rep(plotModels,
+                                           each = nrow(plotFrame)),
+                                       levels = plotModels),
+                     value = pf)
+    plotFrame <- pf[order(pf$variable, pf$date), ]
+    ggplot(data = plotFrame,
+           aes(x = date, y = as.numeric(value), col = variable)) +
+    geom_line() + scale_y_continuous(name = "y")
+  } else {
+    # Set the highest and lowest axis scale
+    ymax <- max(sapply(plotModels,
+                      FUN = function(i) max(fitted(x[[i]]), na.rm = TRUE)))
+    ymin <- min(sapply(plotModels,
+                      FUN = function(i) min(fitted(x[[i]]), na.rm = TRUE)))
+    range <- ymax - ymin
+    plot(x$x, ylim = c(ymin - 0.05 * range, ymax + 0.25 * range), ...)
+    for (i in seq_along(plotModels)) {
+      lines(fitted(x[[plotModels[i]]]), col = i + 1)
+    }
+    legend("top", plotModels, fill = 2:(length(plotModels) + 1), horiz = TRUE)
+  }
+}
 #' Plot a hybridModel object
 #'
 #' Plot a representation of the hybridModel.
@@ -195,62 +271,15 @@ print.hybridModel <- function(x, ...){
 #' @export
 #'
 #' @author David Shaub
-#' @importFrom ggplot2 ggplot aes autoplot geom_line scale_y_continuous
-#'
 plot.hybridModel <- function(x,
                              type = c("fit", "models"),
                              ggplot = FALSE,
-                             ...){
+                             ...) {
    type <- match.arg(type)
-   #chkDots(...)
-   plotModels <- x$models
-   if(type == "fit"){
-      if(ggplot){
-        plotFrame <- data.frame(matrix(0, nrow = length(x$x), ncol = 0))
-        for(i in plotModels){
-          plotFrame[i] <- fitted(x[[i]])
-        }
-        names(plotFrame) <- plotModels
-        plotFrame$date <- as.Date(time(x$x))
-        # Appease R CMD check for undeclared variable
-        variable <- NULL
-        value <- NULL
-        # If anyone knows a cleaner way to transform this "wide" data to "long" data for plotting
-        # with ggplot2 without using additional packages, let me know.
-        pf <- matrix(as.matrix(plotFrame[, plotModels]), ncol = 1)
-        pf <- data.frame(date = plotFrame$date,
-                         variable = factor(rep(plotModels,
-                                               each = nrow(plotFrame)),
-                                           levels = plotModels),
-                         value = pf)
-        plotFrame <- pf[order(pf$variable, pf$date), ]
-        ggplot(data = plotFrame,
-               aes(x = date, y = as.numeric(value), col = variable)) +
-        geom_line() + scale_y_continuous(name = "y")
-         
-      } else{
-         # Set the highest and lowest axis scale
-         ymax <- max(sapply(plotModels,
-                            FUN = function(i) max(fitted(x[[i]]), na.rm = TRUE)))
-         ymin <- min(sapply(plotModels,
-                            FUN = function(i) min(fitted(x[[i]]), na.rm = TRUE)))
-         range <- ymax - ymin
-         plot(x$x, ylim = c(ymin - 0.05 * range, ymax + 0.25 * range), ...)
-         #title(main = "Plot of original series (black) and fitted component models", outer = TRUE)
-         for(i in seq_along(plotModels)){
-            lines(fitted(x[[plotModels[i]]]), col = i + 1)
-         }
-         legend("top", plotModels, fill = 2:(length(plotModels) + 1), horiz = TRUE)
-      }
-   } else if(type == "models"){
-      plotModels <- x$models[x$models != "stlm" & x$models != "nnetar"]
-      for(i in seq_along(plotModels)){
-         # bats, tbats, and nnetar aren't supported by autoplot
-         if(ggplot && !(plotModels[i] %in% c("tbats", "bats", "nnetar"))){
-            autoplot(x[[plotModels[i]]])
-         } else if(!ggplot){
-            plot(x[[plotModels[i]]])
-         }
-      }
+   chkDots(...)
+   if (type == "fit") {
+     plotFitted(x = x, ggplot = ggplot)
+   } else if (type == "models") {
+     plotModelObjects(x = x, ggplot = ggplot)
    }
 }

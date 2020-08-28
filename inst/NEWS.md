@@ -1,3 +1,8 @@
+# Version 5.0.19 [2020-08-27]
+* Fix `residuals.hybridModel()` and added tests.
+* Linting of package with the "lintr" package
+* `Makefile` targets for building and package development.
+
 # Version 5.0.18 [2020-04-01]
 * Add the `rolling` argument to `hybridModel()` that can be used when `weights = "cv.errors"` to control the `rolling` argument in `cvts()`.
 * Add `comb` as an argument to `thiefModel()`.
@@ -59,7 +64,7 @@
 Note that if the model that you are fitting also utilizes parallelization,
 the number of cores used by each model multiplied by `num.cores` passed to
 `cvts()` should not exceed the number of cores on your machine.
-* The package versioning now follows [semantic versioning](http://semver.org/) more closely; however, the convention used will be `MAJOR.MINOR.RELEASE_NUM`.
+* The package versioning now follows [semantic versioning](https://semver.org/) more closely; however, the convention used will be `MAJOR.MINOR.RELEASE_NUM`.
 * Instead of loading the entire `ggplot2` namespace, only specific functions are now imported.
 
 # Version 0.4.1 [2017-06-18]
