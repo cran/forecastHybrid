@@ -28,6 +28,8 @@
 #' See details.
 #' @param t.args an optional \code{list} of arguments to pass to \code{\link[forecast]{tbats}}.
 #' See details.
+#' @param x.args an optional \code{list} of arguments to pass to \code{\link[forecast]{arfima}}.
+#' See details.
 #' @param z.args an optional \code{list} of arguments to pass to \code{\link[forecast]{snaive}}.
 #' See details.
 #' @param weights method for weighting the forecasts of the various contributing
@@ -35,9 +37,9 @@
 #' in many cases than giving more weight to models with better in-sample performance.
 #' Cross validated errors--implemented with \code{link{cvts}}
 #' should produce the best forecast, but the model estimation is also the slowest. Note that
-#' extra arguments
-#' passed in \code{a.args}, \code{e.args}, \code{n.args}, \code{s.args}, and \code{t.args} are
-#' not used during cross validation. See further explanation in \code{\link{cvts}}.
+#' extra arguments passed in \code{a.args}, \code{e.args}, \code{n.args}, \code{s.args},
+#' \code{x.args}, and \code{t.args} are not used during cross validation. See further explanation
+#' in \code{\link{cvts}}.
 #' Weights utilizing in-sample errors are also available but not recommended.
 #' @param errorMethod  method of measuring accuracy to use if weights are not
 #' to be equal.
@@ -68,8 +70,8 @@
 #' @details The \code{hybridModel} function fits multiple individual model specifications
 #' to allow easy creation of ensemble forecasts. While default settings for the individual
 #' component models work quite well in most cases, fine control can be exerted by passing detailed
-#' arguments to the component models in the
-#' \code{a.args}, \code{e.args}, \code{n.args}, \code{s.args}, and \code{t.args} lists.
+#' arguments to the component models in the \code{a.args}, \code{e.args}, \code{n.args},
+#' \code{s.args}, \code{x.args}, and \code{t.args} lists.
 #' Note that if \code{xreg} is passed to the \code{a.args}, \code{n.args}, or
 #' \code{s.args} component models it must now be passed as a matrix. In "forecastHybrid"
 #' versions earlier than 4.0.15 it would instead be passed in as a dataframe, but for consistency
@@ -91,7 +93,7 @@
 #' @examples
 #' \dontrun{
 #'
-#' # Fit an auto.arima, ets, thetam, nnetar, stlm, and tbats model
+#' # Fit an auto.arima, ets, thetam, nnetar, stlm, arfima, and tbats model
 #' # on the time series with equal weights
 #' mod1 <- hybridModel(AirPassengers)
 #' plot(forecast(mod1))
@@ -120,6 +122,7 @@ hybridModel <- function(y, # nolint
                         n.args = NULL, # nolint
                         s.args = NULL, # nolint
                         t.args = NULL, # nolint
+                        x.args = NULL, # nolint
                         z.args = NULL, # nolint
                         weights = c("equal", "insample.errors", "cv.errors"),
                         errorMethod = c("RMSE", "MAE", "MASE"),
@@ -134,8 +137,8 @@ hybridModel <- function(y, # nolint
   ##############################################################################
   # Validate input
   ##############################################################################
-  modelArguments <- list("a" = a.args, "e" = e.args, "f" = NULL, "n" = n.args,
-                         "s" = s.args, "t" = t.args, "z" = z.args)
+  modelArguments <- list(a = a.args, e = e.args, f = NULL, n = n.args,
+                         s = s.args, t = t.args, x = x.args, z = z.args)
 
   # Validate and clean the input timeseries
   y <- prepareTimeseries(y = y)
@@ -146,23 +149,23 @@ hybridModel <- function(y, # nolint
   if (weights == "insample.errors") {
     wrnMsg <- paste0("Using insample.error weights is not recommended for accuracy and ",
                      "may be deprecated in the future.")
-    warning(wrnMsg)
+    warning(wrnMsg, call. = FALSE)
   }
   errorMethod <- match.arg(errorMethod)
 
   # Match the specified models
-  expandedModels <- sort(unique(tolower(unlist(strsplit(models, split = "")))))
+  expandedModels <- sort(unique(tolower(unlist(strsplit(models, split = "", fixed = TRUE)))))
   # Check models and data length to ensure enough data: remove models that require more data
   expandedModels <- removeModels(y = y, models = expandedModels)
 
   # Check the parallel arguments
   checkParallelArguments(parallel = parallel, num.cores = num.cores)
 
-  # Check a.args/t.args/e.args/n.args/s.args
+  # Check a.args/t.args/e.args/n.args/s.args/x.args
   checkModelArgs(modelArguments = modelArguments, models = expandedModels)
 
   if (weights == "cv.errors" && errorMethod == "MASE") {
-    warning("cv errors currently do not support MASE. Reverting to RMSE.")
+    warning("cv errors currently do not support MASE. Reverting to RMSE.", call. = FALSE)
     errorMethod <- "RMSE"
   }
 
@@ -186,7 +189,7 @@ hybridModel <- function(y, # nolint
                                   .packages = c("forecast", "forecastHybrid")) %dopar% {
       # thetam() currently does not handle arguments
       if (modelCode == "f") {
-         fitModel <- thetam(y)
+        fitModel <- thetam(y)
       } else { # All other models handle lambda and additional arguments
         argsAdditional <- modelArguments[[modelCode]]
         if (is.null(argsAdditional)) {
@@ -209,7 +212,7 @@ hybridModel <- function(y, # nolint
       }
       # thetam() currently does not handle arguments
       if (modelCode == "f") {
-         modelResults[[modelName]] <- thetam(y)
+        modelResults[[modelName]] <- thetam(y)
       } else { # All other models handle lambda and additional arguments
         argsAdditional <- modelArguments[[modelCode]]
         if (is.null(argsAdditional)) {
@@ -267,10 +270,10 @@ hybridModel <- function(y, # nolint
   }
 
   # Check for valid weights when weights = "insample.errors" and submodels produce perfect fits
-  if (is.element(NaN, modelResults$weights) & weights %in% c("insample.errors", "cv.errors")) {
+  if (is.element(NaN, modelResults$weights) && weights %in% c("insample.errors", "cv.errors")) {
     wrnMsg <- paste0("At least one model perfectly fit the series, so accuracy measures cannot",
                      " be used for weights. Reverting to weights = \"equal\".") # nolint
-    warning(wrnMsg)
+    warning(wrnMsg, call. = FALSE)
     modelResults$weights <- rep(1 / length(includedModels),
                                 length(includedModels))
   }
@@ -283,24 +286,23 @@ hybridModel <- function(y, # nolint
   # Apply the weights to construct the fitted values
   fits <- sapply(includedModels, FUN = function(x) fitted(modelResults[[x]]))
   fitsWeightsMatrix <- matrix(rep(modelResults$weights[includedModels],
-                              times = nrow(fits)),
+                                  times = nrow(fits)),
                               nrow = nrow(fits), byrow = TRUE)
   fits <- rowSums(fits * fitsWeightsMatrix)
-  resid <- y - fits
+  resids <- y - fits
   tsp(fits) <- tsp(y)
 
   # Save which models used xreg
   xregs <- list()
   if ("a" %in% expandedModels) {
-    xregs$auto.arima <- ifelse("xreg" %in% names(a.args) && !is.null(a.args$xreg), TRUE, FALSE) # nolint
+    xregs$auto.arima <- "xreg" %in% names(a.args) && !is.null(a.args$xreg) # nolint
   }
   if ("n" %in% expandedModels) {
-    xregs$nnetar <- ifelse("xreg" %in% names(n.args) && !is.null(n.args$xreg), TRUE, FALSE)
+    xregs$nnetar <- "xreg" %in% names(n.args) && !is.null(n.args$xreg)
   }
   if ("s" %in% expandedModels) {
     methodArima <- "method" %in% names(s.args) && s.args$method == "arima"
-    xregs$stlm <- ifelse("xreg" %in% names(s.args) && !is.null(s.args$xreg) && methodArima,
-                         TRUE, FALSE)
+    xregs$stlm <- "xreg" %in% names(s.args) && !is.null(s.args$xreg) && methodArima
   }
 
   # Prepare the hybridModel object
@@ -310,6 +312,6 @@ hybridModel <- function(y, # nolint
   modelResults$xreg <- xregs
   modelResults$models <- includedModels
   modelResults$fitted <- fits
-  modelResults$residuals <- resid
+  modelResults$residuals <- resids
   return(modelResults)
 }
