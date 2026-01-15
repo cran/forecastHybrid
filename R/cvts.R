@@ -324,7 +324,7 @@ cvts <- function(x,
                  residuals = resids)
 
   class(result) <- "cvts"
-  return(result)
+  result
 }
 
 #' Generate training and test indices for time series cross validation
@@ -410,6 +410,6 @@ extractForecasts <- function(cv,
   pointf <- Reduce(tsCombine, pointfList)
 
   #Ensure all points in the original series are represented (makes it easy for comparisons)
-  template <- replace(cv$x, c(seq_len(length(cv$x))), NA)
-  return(tsCombine(pointf, template))
+  template <- replace(cv$x, c(seq_along(cv$x)), NA)
+  tsCombine(pointf, template)
 }
